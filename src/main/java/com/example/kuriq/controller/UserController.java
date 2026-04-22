@@ -1,7 +1,7 @@
 package com.example.kuriq.controller;
 
 import com.example.kuriq.dto.user.UserResponse;
-import com.example.kuriq.dto.user.UserSignupRequest;
+import com.example.kuriq.dto.user.SignupRequest;
 import com.example.kuriq.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +18,7 @@ public class UserController {
 
     @PostMapping("/signup") // "/api/users/signup으로 POST 요청 오면 이 함수 실행"
     public ResponseEntity<UserResponse> signup(
-            @RequestBody UserSignupRequest request  // 이 부분 아직 공부 안함
+            @RequestBody SignupRequest request  // 이 부분 아직 공부 안함
     ) {
         return ResponseEntity.ok(userService.signup(request));
     }

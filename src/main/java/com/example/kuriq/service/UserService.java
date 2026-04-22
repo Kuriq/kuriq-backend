@@ -1,8 +1,8 @@
 package com.example.kuriq.service;
 
 import com.example.kuriq.dto.user.UserResponse;
-import com.example.kuriq.dto.user.UserSignupRequest;
-import com.example.kuriq.entity.User;
+import com.example.kuriq.dto.user.SignupRequest;
+import com.example.kuriq.entity.User.User;
 import com.example.kuriq.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 public class UserService {
     private final UserRepository userRepository;
     // 회원가입 요청 데이터를 request라는 이름으로 받아서 -> 회원가입 처리 -> UserResponse 결과를 돌려주는 함수
-    public UserResponse signup(UserSignupRequest request) {
+    public UserResponse signup(SignupRequest request) {
         // 1. DTO를 엔티티로 변환
         User user = User.builder()
                 .email(request.getEmail())
