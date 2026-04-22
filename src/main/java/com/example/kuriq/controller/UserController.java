@@ -1,25 +1,52 @@
 package com.example.kuriq.controller;
 
 import com.example.kuriq.dto.user.UserResponse;
-import com.example.kuriq.dto.user.SignupRequest;
 import com.example.kuriq.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
 
-@RestController// RestAPI용 컨트롤러
+import java.util.List;
+import java.util.Map;
+
+@RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/users")
+@RequestMapping("/api/v1/users")
 public class UserController {
-    private final UserService userService;  // 회원가입 처리해주는 service 가져다쓰기
 
-    @PostMapping("/signup") // "/api/users/signup으로 POST 요청 오면 이 함수 실행"
-    public ResponseEntity<UserResponse> signup(
-            @RequestBody SignupRequest request  // 이 부분 아직 공부 안함
-    ) {
-        return ResponseEntity.ok(userService.signup(request));
+    private final UserService userService;
+
+    @GetMapping("/me")
+    public ResponseEntity<UserResponse> getProfile(@AuthenticationPrincipal String userId) {
+        return ResponseEntity.ok(UserResponse.from(userService.getUser(userId)));
+    }
+
+    @PutMapping("/me")
+    public ResponseEntity<UserResponse> updateProfile(
+            @AuthenticationPrincipal String userId,
+            @RequestBody Map<String, String> body) {
+        userService.updateProfile(userId, body.get("name"), body.get("ageGroup"));
+        return ResponseEntity.ok(UserResponse.from(userService.getUser(userId)));
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteAccount(@AuthenticationPrincipal String userId) {
+        userService.deleteAccount(userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/me/social-accounts")
+    public ResponseEntity<List<Map<String, String>>> getSocialAccounts(
+            @AuthenticationPrincipal String userId) {
+        return ResponseEntity.ok(userService.getSocialAccounts(userId));
+    }
+
+    @DeleteMapping("/me/social-accounts/{provider}")
+    public ResponseEntity<Void> unlinkSocialAccount(
+            @PathVariable String provider,
+            @AuthenticationPrincipal String userId) {
+        userService.unlinkSocialAccount(userId, provider);
+        return ResponseEntity.noContent().build();
     }
 }

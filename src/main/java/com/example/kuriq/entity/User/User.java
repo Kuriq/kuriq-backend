@@ -23,6 +23,8 @@ import org.hibernate.annotations.UuidGenerator;
 )
 @Getter // 모든 필드에 대해 GetEmail(), GetName() 등등 자동 생성
 @NoArgsConstructor(access = AccessLevel.PROTECTED)  // 기본생성자 추가(JPA는 기본 생성자 필수임)
+@AllArgsConstructor
+@Builder
 public class User {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) // 이 필드는 기본키임, 자동으로 숫자 증가시키면서 db에 값 넣음
     @UuidGenerator
@@ -56,30 +58,8 @@ public class User {
         LOCAL, GOOGLE, NAVER, KAKAO // authProvider 변수에 이 4개 중 하나만 들어갈 수 있음
     }
 
-    /** 1. AgeGroup
-
-     연령대 분석 기능을 바로 안 쓸 거면 나중에 추가 가능.
-
-     2. createdAt, updatedAt
-
-     지금 로그인/회원가입만 되면 되는 단계면 없어도 됨.
-     물론 있으면 좋긴 한데, 초반엔 꼭 필수는 아님.
-
-     3. deletedAt
-
-     isDeleted만 있어도 일단 탈퇴 여부 구분은 가능함.
-
-     4. @PrePersist, @PreUpdate
-
-     이건 시간 자동 저장할 때 필요한 거라, createdAt, updatedAt 안 쓰면 없어도 됨.
-
-     5. createLocal(), createSocial()
-
-     정적 팩토리 메서드도 좋은 방식이긴 한데, 지금은 너무 많으면 헷갈릴 수 있음.
-     처음엔 Service에서 builder나 생성으로 만들어도 됨.
-
-     6. 소셜 로그인 관련 세부 코드
-
-     지금 로컬 로그인부터 만들 거면 미뤄도 됨.
-     */
+    // 논리삭제
+    public void softDelete() {
+        this.isDeleted = true;
+    }
 }
