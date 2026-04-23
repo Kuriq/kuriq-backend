@@ -1,8 +1,11 @@
 package com.example.kuriq.controller;
 
-import com.example.kuriq.dto.user.AuthResponse;
-import com.example.kuriq.dto.user.LoginRequest;
-import com.example.kuriq.dto.user.SignupRequest;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.Operation;
+
+import com.example.kuriq.dto.user.response.AuthResponse;
+import com.example.kuriq.dto.user.request.LoginRequest;
+import com.example.kuriq.dto.user.request.SignupRequest;
 import com.example.kuriq.service.AuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Arrays;
 import java.util.Map;
 
+@Tag(name = "Auth", description = "인증 API")
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -27,6 +31,7 @@ public class AuthController {
     private static final int    COOKIE_MAX_AGE = 7 * 24 * 60 * 60; // 7일(초)
 
     // 회원가입
+    @Operation(summary = "회원가입")
     @PostMapping("/signup")
     public ResponseEntity<Map<String, String>> signup(
             @Valid @RequestBody SignupRequest req) {
@@ -36,6 +41,7 @@ public class AuthController {
     }
 
     // 로그인
+    @Operation(summary = "로그인")
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(
             @Valid @RequestBody LoginRequest req,
@@ -47,6 +53,7 @@ public class AuthController {
     }
 
     // 로그아웃
+    @Operation(summary = "로그아웃")
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
             HttpServletRequest httpReq,

@@ -1,4 +1,4 @@
-package com.example.kuriq.dto.user;
+package com.example.kuriq.dto.user.response;
 
 import com.example.kuriq.entity.user.User;
 import lombok.Builder;
@@ -10,12 +10,14 @@ public class UserResponse {
     private String id;
     private String email;
     private String name;
+    private User.AgeGroup ageGroup;
 
     public static UserResponse from(User user) {
         return UserResponse.builder()
                 .id(user.getId())
                 .email(user.getEmail())
                 .name(user.getName())
+                // .ageGroup(u.getAgeGroup())
                 .build();
     }
 

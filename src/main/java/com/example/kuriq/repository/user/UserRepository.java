@@ -1,4 +1,4 @@
-package com.example.kuriq.repository;
+package com.example.kuriq.repository.user;
 
 import com.example.kuriq.entity.user.User;  // 이 Repository가 다룰 엔티티
 import org.springframework.data.jpa.repository.JpaRepository;

@@ -60,4 +60,8 @@ public class RefreshToken {
         this.isRevoked = true;  // true로 변경돼서 토큰 사용금지됨
     }
 
+    // 현재 시간이 expiresAt 이후이면 만료된 것으로 판단
+    public boolean isExpired() {
+        return LocalDateTime.now().isAfter(expiresAt);
+    }
 }

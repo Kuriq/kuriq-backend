@@ -1,7 +1,6 @@
 package com.example.kuriq.security;
 
-import com.example.kuriq.repository.UserRepository;
-import com.example.kuriq.security.JwtProvider;
+import com.example.kuriq.repository.user.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

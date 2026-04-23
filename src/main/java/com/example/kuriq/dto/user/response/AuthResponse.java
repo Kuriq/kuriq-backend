@@ -1,4 +1,4 @@
-package com.example.kuriq.dto.user;
+package com.example.kuriq.dto.user.response;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -19,7 +19,6 @@ import lombok.Getter;
  *    HttpOnly 쿠키로 별도 전달 → JS로 읽을 수 없어 보안상 안전.
  */
 
-// 여기 문서 찾아보기!! (다른 파일들 코드 작성부터 하기로함)
 @Getter
 @Builder
 public class AuthResponse {

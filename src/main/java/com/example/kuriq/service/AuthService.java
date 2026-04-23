@@ -1,13 +1,13 @@
 package com.example.kuriq.service;
 
-import com.example.kuriq.dto.user.LoginRequest;
-import com.example.kuriq.dto.user.SignupRequest;
+import com.example.kuriq.dto.user.request.LoginRequest;
+import com.example.kuriq.dto.user.request.SignupRequest;
 import com.example.kuriq.entity.user.LoginAttempt;
 import com.example.kuriq.entity.user.RefreshToken;
 import com.example.kuriq.entity.user.User;
-import com.example.kuriq.repository.LoginAttemptRepository;
-import com.example.kuriq.repository.RefreshTokenRepository;
-import com.example.kuriq.repository.UserRepository;
+import com.example.kuriq.repository.user.LoginAttemptRepository;
+import com.example.kuriq.repository.user.RefreshTokenRepository;
+import com.example.kuriq.repository.user.UserRepository;
 import com.example.kuriq.security.JwtProvider;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;

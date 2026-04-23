@@ -1,4 +1,4 @@
-package com.example.kuriq.repository;
+package com.example.kuriq.repository.user;
 
 import com.example.kuriq.entity.user.NotificationSetting;
 import org.springframework.data.jpa.repository.JpaRepository;
