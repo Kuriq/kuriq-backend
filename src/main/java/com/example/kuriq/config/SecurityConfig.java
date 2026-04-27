@@ -44,6 +44,9 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/roadmap/generate"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/courses/search"
+                        ).permitAll()
                         // Swagger UI 허용
                         .requestMatchers(
                                 "/swagger-ui.html",
