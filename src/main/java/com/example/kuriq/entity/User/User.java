@@ -72,6 +72,11 @@ public class User {
     // 논리삭제
     public void softDelete() {
         this.isDeleted = true;
+        /** 회원 탈퇴하고 재가입할 때 이메일 중복이면 재가입 안되는 문제 해결 */
+        this.email = "deleted_" + this.id + "@deleted.com";  // 이메일 익명화
+        this.name = "탈퇴한 사용자";  // "탈퇴한 사용자"로 표시되게
+        // 탈퇴한 계정으로 로그인 못 하게 이중 보안(이미 findByEmailAndIsDeletedFalse로 막혀있긴함)
+        this.password = null;
     }
 
     // 소프트 삭제 시 삭제된 시간 저장 (NULL이면 삭제되지 않은 상태)

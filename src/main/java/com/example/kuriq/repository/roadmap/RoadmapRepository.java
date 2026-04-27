@@ -75,4 +75,22 @@ public interface RoadmapRepository extends JpaRepository<Roadmap, String> {
           AND i.isCompleted = false
         """)
     List<String> findUsersWithIncompleteItems();
+
+    // MultipleBagFetchException 에러 -> 한 번에 하나의 Bag만 fetch하기
+    // 1차: weeks fetch
+    @Query("""
+    SELECT r FROM Roadmap r
+    LEFT JOIN FETCH r.weeks
+    WHERE r.id = :roadmapId
+    """)
+    Optional<Roadmap> findByIdWithWeeks(@Param("roadmapId") String roadmapId);
+
+    // 2차: items + course fetch
+    @Query("""
+    SELECT r FROM Roadmap r
+    LEFT JOIN FETCH r.items i
+    LEFT JOIN FETCH i.course
+    WHERE r.id = :roadmapId
+    """)
+    Optional<Roadmap> findByIdWithItems(@Param("roadmapId") String roadmapId);
 }

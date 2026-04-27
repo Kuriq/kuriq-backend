@@ -68,6 +68,7 @@ public class RoadmapService {
                     weekDto.getDescription(),
                     BigDecimal.valueOf(weekDto.getTotalHours()));
             roadmapWeekRepository.save(week);
+            roadmap.getWeeks().add(week);  // ★ 추가 — 컬렉션에 직접 add
 
             for (AiClient.RoadmapGenerateAiResponse.CourseItemDto itemDto : weekDto.getCourses()) {
                 Course course = courseMap.get(itemDto.getCourseId());
@@ -75,8 +76,9 @@ public class RoadmapService {
                     log.warn("AI courseId 없음: {}", itemDto.getCourseId());
                     continue;
                 }
-                roadmapItemRepository.save(
-                        RoadmapItem.create(roadmap, course, weekDto.getWeekNumber(), itemDto.getOrderInWeek()));
+                RoadmapItem item = RoadmapItem.create(roadmap, course, weekDto.getWeekNumber(), itemDto.getOrderInWeek());
+                roadmapItemRepository.save(item);
+                roadmap.getItems().add(item);  // ★ 추가 — 컬렉션에 직접 add
             }
         }
 
@@ -151,15 +153,22 @@ public class RoadmapService {
         return RoadmapResponse.RoadmapItemResponse.from(item);
     }
 
-    // ─── 내부 헬퍼 ───────────────────────────────────────────
-
+    /** 데이터 조회 후 사용자 권한까지 검증하는 공통 메서드 */
+    // MultipleBagFetchException 에러 고치기 -> 한 번에 하나의 Bag만 fetch하기
     private Roadmap getAndValidate(String roadmapId, String userId) {
-        Roadmap roadmap = roadmapRepository.findById(roadmapId)
+        // 1차 조회: weeks 로드
+        Roadmap roadmap = roadmapRepository.findByIdWithWeeks(roadmapId)
                 .orElseThrow(() -> new RuntimeException("로드맵을 찾을 수 없습니다"));
+
         if (!roadmap.getUserId().equals(userId)) {
             throw new RuntimeException("접근 권한이 없습니다");
         }
+
+        // 2차 조회: items + course 로드 (영속성 컨텍스트가 같으므로 자동 병합됨)
+        roadmapRepository.findByIdWithItems(roadmapId);
+
         return roadmap;
+
     }
 
     private RoadmapItem getItemAndValidate(String itemId, String userId) {
@@ -170,6 +179,8 @@ public class RoadmapService {
         }
         return item;
     }
+
+    /******************************************************************************/
 
     // 엔티티 → 응답 DTO 변환
     private RoadmapResponse buildRoadmapResponse(Roadmap roadmap) {
