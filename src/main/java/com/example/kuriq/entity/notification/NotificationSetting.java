@@ -1,4 +1,4 @@
-package com.example.kuriq.entity.user;
+package com.example.kuriq.entity.notification;
 
 // users 1:1 notification_settings — user_id가 PK이자 FK.
 // 알림 채널(이메일/카카오), 발송 요일/시간, 유형별 On/Off를 관리한다.

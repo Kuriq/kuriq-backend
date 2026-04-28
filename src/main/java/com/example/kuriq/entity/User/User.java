@@ -105,5 +105,11 @@ public class User {
         updatedAt = LocalDateTime.now();
     }
 
-    
+    // 회원가입 시 softDelete된 계정이면 재활성화
+    public void reactivate(String encodedPassword, String name) {
+        this.password = encodedPassword;
+        this.name = name;
+        this.isDeleted = false;
+        this.deletedAt = null;
+    }
 }
