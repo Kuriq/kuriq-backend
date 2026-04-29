@@ -10,4 +10,6 @@ public interface UserRepository extends JpaRepository<User, String> { // interfa
     Optional<User> findByEmailAndIsDeletedFalse(String email);
 
     boolean existsByEmailAndIsDeletedFalse(String email);
+
+    Optional<User> findByEmail(String email);  // 회원가입 시 softDelete된 계정 재활성화를 위해 이메일 찾기
 }

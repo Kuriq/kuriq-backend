@@ -1,5 +1,6 @@
 package com.example.kuriq.exception;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -35,5 +36,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleIllegalState(IllegalStateException e) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(Map.of("message", e.getMessage()));
+    }
+
+    // DB 제약조건 위반 에러 처리 -> 이미 softDelete된 이메일로 회원가입 시 409가 아닌 500 에러 던지는 문제 해결
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleDataIntegrity(DataIntegrityViolationException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("message", "이미 사용 중인 이메일입니다."));
     }
 }

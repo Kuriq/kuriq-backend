@@ -2,9 +2,11 @@ package com.example.kuriq.service;
 
 import com.example.kuriq.dto.user.request.LoginRequest;
 import com.example.kuriq.dto.user.request.SignupRequest;
+import com.example.kuriq.entity.notification.NotificationSetting;
 import com.example.kuriq.entity.user.LoginAttempt;
 import com.example.kuriq.entity.user.RefreshToken;
 import com.example.kuriq.entity.user.User;
+import com.example.kuriq.repository.notification.NotificationSettingRepository;
 import com.example.kuriq.repository.user.LoginAttemptRepository;
 import com.example.kuriq.repository.user.RefreshTokenRepository;
 import com.example.kuriq.repository.user.UserRepository;
@@ -29,11 +31,20 @@ public class AuthService {
     private final LoginAttemptRepository loginAttemptRepository;
     private final JwtProvider jwtProvider;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationSettingRepository notificationSettingRepository;
 
     // 회원가입
     public String signup(SignupRequest req) {
-        if (userRepository.existsByEmailAndIsDeletedFalse(req.getEmail())) {
-            throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
+
+        User existing = userRepository.findByEmail(req.getEmail()).orElse(null);
+
+        if (existing != null) {
+            if (!existing.getIsDeleted()) {
+                throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
+            }
+            // soft delete된 계정이면 재활성화
+            existing.reactivate(passwordEncoder.encode(req.getPassword()), req.getName());
+            return existing.getId();
         }
 
         User user = User.builder()
@@ -45,6 +56,9 @@ public class AuthService {
                 .build();
 
         userRepository.save(user);
+        // 유저가 생성되는 시점인 회원가입 때 알림 설정이 같이 만들어져야 함(1:1관계라서)
+        // 즉, 회원가입할 때 notification_settings 테이블에 데이터가 자동으로 들어가야 함
+        notificationSettingRepository.save(NotificationSetting.createDefault(user.getId()));
         return user.getId();
     }
 
