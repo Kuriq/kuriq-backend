@@ -1,6 +1,6 @@
-package com.example.kuriq.repository.notification;
+package com.example.kuriq.repository.user;
 
-import com.example.kuriq.entity.notification.NotificationSetting;
+import com.example.kuriq.entity.user.NotificationSetting;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 // PK = userId (users와 1:1). findById(userId)로 바로 조회.
