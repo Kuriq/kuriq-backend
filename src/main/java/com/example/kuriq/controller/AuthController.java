@@ -1,5 +1,7 @@
 package com.example.kuriq.controller;
 
+import com.example.kuriq.dto.user.request.PasswordResetConfirmRequest;
+import com.example.kuriq.dto.user.request.PasswordResetRequest;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 
@@ -113,5 +115,25 @@ public class AuthController {
         return (forwarded != null && !forwarded.isBlank())
                 ? forwarded.split(",")[0].trim()
                 : req.getRemoteAddr();
+    }
+
+    // 비밀번호 재설정 요청(이메일 입력 → 토큰 생성 및 이메일 발송)
+    @Operation(summary = "비밀번호 재설정 요청")
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<Void> requestPasswordReset(
+            @Valid @RequestBody PasswordResetRequest req) {
+        authService.requestPasswordReset(req.getEmail());  // 이메일로 재설정 토큰 생성 및 발송 처리
+        return ResponseEntity.noContent().build();  // 성공 시 204 No Content 반환 (응답 바디 없음)
+    }
+
+    // 비밀번호 재설정 확인(토큰 검증 → 새 비밀번호로 변경)
+    @Operation(summary = "비밀번호 재설정 확인")
+    @PostMapping("/password-reset/confirm")
+    public ResponseEntity<Void> confirmPasswordReset(
+            @Valid @RequestBody PasswordResetConfirmRequest req) {
+        // 토큰 검증 후 비밀번호 변경 처리
+        authService.confirmPasswordReset(req.getToken(), req.getNewPassword());
+        // 성공 시 204 No Content 반환
+        return ResponseEntity.noContent().build();
     }
 }

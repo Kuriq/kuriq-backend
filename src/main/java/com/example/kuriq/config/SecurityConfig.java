@@ -42,7 +42,10 @@ public class SecurityConfig {
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/logout",
                                 "/api/v1/auth/refresh",
-                                "/api/v1/roadmap/generate"
+                                "/api/v1/roadmap/generate",
+                                // 비밀번호 재설정할 때 인증 없이 접근 가능하게
+                                "/api/v1/auth/password-reset/request",
+                                "/api/v1/auth/password-reset/confirm"
                         ).permitAll()
                         // Swagger UI 허용
                         .requestMatchers(

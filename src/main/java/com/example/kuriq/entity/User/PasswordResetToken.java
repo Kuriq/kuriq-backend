@@ -62,7 +62,7 @@ public class PasswordResetToken {
     @PrePersist
     private void prePersist() { createdAt = LocalDateTime.now(); }
 
-    // 토큰 생성 메서드 (팩토리 메서드)
+    // 토큰 생성 메서드
     // userId, tokenHash를 받아서 객체 생성
     // 만료 시간은 현재 기준 +1시간으로 설정
     public static PasswordResetToken create(String userId, String tokenHash) {
@@ -80,7 +80,7 @@ public class PasswordResetToken {
     }
 
     // 토큰 사용 처리
-    // 사용 완료 시 true로 변경 → 재사용 방지
+    // 사용 완료 시 true로 변경해서 재사용 방지
     public void markUsed() { this.used = true; }
 }
 

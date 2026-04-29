@@ -34,6 +34,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0' // swagger
+	// 비밀번호 재설정 시 이메일 발송 로직
+	implementation 'org.springframework.boot:spring-boot-starter-mail'
 }
 
 
