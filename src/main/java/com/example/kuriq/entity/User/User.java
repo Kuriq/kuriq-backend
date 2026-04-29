@@ -112,4 +112,9 @@ public class User {
         this.isDeleted = false;
         this.deletedAt = null;
     }
+
+    // 비밀번호 변경
+    public void changePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
 }
