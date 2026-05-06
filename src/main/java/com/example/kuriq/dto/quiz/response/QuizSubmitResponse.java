@@ -2,6 +2,9 @@ package com.example.kuriq.dto.quiz.response;
 
 import lombok.Builder;
 import lombok.Getter;
+import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.util.List;
 
@@ -17,6 +20,9 @@ public class QuizSubmitResponse {
     private List<String> weakTopics;
 
     @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
     @Builder
     public static class ResultDto {
         private String questionId;
@@ -24,7 +30,7 @@ public class QuizSubmitResponse {
         private Boolean isCorrect;
         private String result;
         private Object userAnswer;
-        private String correctAnswer;
+        private Object correctAnswer;
         private String explanation;
         private String feedback;
         private String noteReference;

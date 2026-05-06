@@ -6,12 +6,16 @@ import com.example.kuriq.dto.quiz.response.QuizHistoryResponse;
 import com.example.kuriq.dto.quiz.request.QuizGenerateRequest;
 import com.example.kuriq.dto.quiz.response.QuizGenerateResponse;
 import com.example.kuriq.dto.quiz.response.QuizSubmitResponse;
+import com.example.kuriq.entity.quiz.QuizResult;
 import com.example.kuriq.entity.quiz.QuizOption;
 import com.example.kuriq.entity.quiz.QuizQuestion;
 import com.example.kuriq.entity.quiz.QuizQuestionType;
 import com.example.kuriq.entity.quiz.QuizSession;
+import com.example.kuriq.exception.ApiException;
+import com.example.kuriq.repository.quiz.QuizResultRepository;
 import com.example.kuriq.repository.quiz.QuizSessionRepository;
 import com.example.kuriq.repository.roadmap.CourseRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -19,12 +23,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,8 +34,10 @@ import java.util.stream.Collectors;
 public class QuizService {
 
     private final QuizSessionRepository quizSessionRepository;
+    private final QuizResultRepository quizResultRepository;
     private final CourseRepository courseRepository;
     private final AiClient aiClient;
+    private final ObjectMapper objectMapper;
 
     public QuizGenerateResponse generate(QuizGenerateRequest request, String userId) {
         validateExcludedSessions(request.getExcludeSessionIds(), userId);
@@ -65,6 +68,7 @@ public class QuizService {
                     .explanation(q.getExplanation())
                     .noteReference(q.getNoteReference())
                     .weakTopic(q.getWeakTopic())
+                    .acceptableKeywords(q.getAcceptableKeywords())
                     .build();
             if (q.getOptions() != null) {
                 for (int optionIndex = 0; optionIndex < q.getOptions().size(); optionIndex++) {
@@ -119,50 +123,70 @@ public class QuizService {
 
     public QuizSubmitResponse submit(String quizSessionId, QuizSubmitRequest request, String userId) {
         QuizSession session = quizSessionRepository.findById(quizSessionId)
-                .orElseThrow(() -> new IllegalArgumentException("퀴즈 세션을 찾을 수 없습니다"));
+                .orElseThrow(() -> new ApiException("QUIZ_SESSION_NOT_FOUND", "퀴즈를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
         if (!Objects.equals(session.getUserId(), userId)) {
-            throw new IllegalArgumentException("퀴즈 세션에 접근 권한이 없습니다");
+            throw new ApiException("FORBIDDEN", "이 퀴즈에 접근할 수 없습니다.", HttpStatus.FORBIDDEN);
         }
+        return quizResultRepository.findBySessionId(quizSessionId)
+                .map(r -> toResponse(r, session))
+                .orElseGet(() -> gradeAndSave(session, request, userId));
+    }
+
+    private QuizSubmitResponse gradeAndSave(QuizSession session, QuizSubmitRequest request, String userId) {
 
         Map<String, QuizQuestion> questionMap = session.getQuestions().stream()
                 .collect(Collectors.toMap(QuizQuestion::getId, q -> q));
+        if (request.getAnswers() == null || request.getAnswers().size() != questionMap.size()) {
+            throw new ApiException("INVALID_INPUT", "모든 문제에 답변해 주세요.", HttpStatus.BAD_REQUEST);
+        }
         Set<String> submittedIds = new HashSet<>();
+        Map<String, Object> answersByQuestionId = new HashMap<>();
         List<QuizSubmitResponse.ResultDto> results = new java.util.ArrayList<>();
         Set<String> weakTopics = new java.util.LinkedHashSet<>();
         int correctCount = 0;
 
         for (QuizSubmitRequest.AnswerDto answerDto : request.getAnswers()) {
             if (!submittedIds.add(answerDto.getQuestionId())) {
-                throw new IllegalArgumentException("중복된 questionId가 있습니다");
+                throw new ApiException("INVALID_INPUT", "모든 문제에 답변해 주세요.", HttpStatus.BAD_REQUEST);
             }
             QuizQuestion question = questionMap.get(answerDto.getQuestionId());
             if (question == null) {
-                throw new IllegalArgumentException("세션에 포함되지 않은 questionId가 있습니다");
+                throw new ApiException("INVALID_INPUT", "모든 문제에 답변해 주세요.", HttpStatus.BAD_REQUEST);
             }
+            answersByQuestionId.put(answerDto.getQuestionId(), answerDto.getAnswer());
+        }
 
-            var evaluated = evaluate(question, answerDto.getAnswer());
+        for (QuizQuestion question : session.getQuestions()) {
+            var evaluated = evaluate(question, answersByQuestionId.get(question.getId()), userId);
             if (Boolean.TRUE.equals(evaluated.getIsCorrect())) correctCount++;
             if (evaluated.getWeakTopic() != null) weakTopics.add(evaluated.getWeakTopic());
             results.add(evaluated);
-        }
-
-        if (submittedIds.size() != questionMap.size()) {
-            throw new IllegalArgumentException("모든 문항의 답안을 제출해 주세요");
         }
 
         session.submitScore(correctCount);
         quizSessionRepository.save(session);
 
         int scorePercent = calculateScorePercent(correctCount, session.getTotalQuestions());
-        return QuizSubmitResponse.builder()
+        var response = QuizSubmitResponse.builder()
                 .quizSessionId(session.getId())
                 .totalQuestions(session.getTotalQuestions())
                 .correctCount(correctCount)
                 .scorePercent(scorePercent)
                 .results(results)
-                .quriMessage(scorePercent >= 80 ? "잘했어요!" : "다시 복습해봐요.")
+                .quriMessage(buildQuriMessage(scorePercent, correctCount, session.getTotalQuestions(), new java.util.ArrayList<>(weakTopics)))
                 .weakTopics(new java.util.ArrayList<>(weakTopics))
                 .build();
+
+        quizResultRepository.save(QuizResult.builder()
+                .sessionId(session.getId())
+                .userId(userId)
+                .totalQuestions(session.getTotalQuestions())
+                .correctCount(correctCount)
+                .scorePercent(scorePercent)
+                .answersJson(writeJson(results))
+                .weakTopicsJson(writeJson(new ArrayList<>(weakTopics)))
+                .build());
+        return response;
     }
 
     private void validateExcludedSessions(List<String> excludeSessionIds, String userId) {
@@ -233,7 +257,7 @@ public class QuizService {
         return Objects.isNull(value) || value.isBlank();
     }
 
-    private QuizSubmitResponse.ResultDto evaluate(QuizQuestion question, Object answer) {
+    private QuizSubmitResponse.ResultDto evaluate(QuizQuestion question, Object answer, String userId) {
         String type = question.getType().name();
         String correct = question.getCorrectAnswer();
         boolean isCorrect;
@@ -242,21 +266,41 @@ public class QuizService {
         String weakTopic = null;
 
         if (question.getType() == QuizQuestionType.MULTIPLE_CHOICE) {
-            if (answer != null && !(answer instanceof String)) throw new IllegalArgumentException("객관식 답안은 문자열이어야 합니다");
+            if (answer != null && !(answer instanceof String)) throw new ApiException("INVALID_INPUT", "모든 문제에 답변해 주세요.", HttpStatus.BAD_REQUEST);
             String user = answer == null ? null : String.valueOf(answer);
             isCorrect = normalize(user).equals(normalize(correct));
         } else if (question.getType() == QuizQuestionType.TRUE_FALSE) {
-            if (answer != null && !(answer instanceof Boolean) && !(answer instanceof String)) throw new IllegalArgumentException("True/False 답안은 boolean 또는 문자열이어야 합니다");
+            if (answer != null && !(answer instanceof Boolean) && !(answer instanceof String)) throw new ApiException("INVALID_INPUT", "모든 문제에 답변해 주세요.", HttpStatus.BAD_REQUEST);
             String user = normalizeBoolean(answer);
             isCorrect = normalize(user).equals(normalizeBoolean(correct));
         } else {
-            if (answer != null && !(answer instanceof String)) throw new IllegalArgumentException("단답형 답안은 문자열이어야 합니다");
+            if (answer != null && !(answer instanceof String)) throw new ApiException("INVALID_INPUT", "모든 문제에 답변해 주세요.", HttpStatus.BAD_REQUEST);
             String user = answer == null ? null : String.valueOf(answer);
-            isCorrect = normalize(user).equalsIgnoreCase(normalize(correct));
-            if (!isCorrect && "배열".equals(normalize(user)) && "리스트".equals(normalize(correct))) {
-                result = "PARTIAL";
-                feedback = "'배열'은 유사한 개념이지만 정답은 '리스트'입니다.";
-                weakTopic = question.getWeakTopic();
+            if (normalize(user).equalsIgnoreCase(normalize(correct))) {
+                isCorrect = true;
+            } else if (matchesKeywords(user, question.getAcceptableKeywords())) {
+                isCorrect = true;
+            } else {
+                try {
+                    var graded = aiClient.gradeShortAnswer(AiClient.QuizGradeAiRequest.builder().question(question.getQuestion()).correctAnswer(question.getCorrectAnswer()).acceptableKeywords(question.getAcceptableKeywords()).userAnswer(user).userId(userId).build());
+                    if (graded == null) {
+                        result = "GRADING_FAILED";
+                        feedback = "채점에 일시적인 문제가 발생했어요. 모범 답안을 확인해 주세요.";
+                    } else {
+                        String aiResult = normalize(graded.getResult()).toUpperCase();
+                        if (Set.of("CORRECT", "PARTIAL", "WRONG").contains(aiResult)) {
+                            result = aiResult;
+                            feedback = graded.getFeedback();
+                        } else {
+                            result = "GRADING_FAILED";
+                            feedback = "채점에 일시적인 문제가 발생했어요. 모범 답안을 확인해 주세요.";
+                        }
+                    }
+                } catch (Exception e) {
+                    result = "GRADING_FAILED";
+                    feedback = "채점에 일시적인 문제가 발생했어요. 모범 답안을 확인해 주세요.";
+                }
+                isCorrect = "CORRECT".equals(result);
             }
         }
 
@@ -269,7 +313,7 @@ public class QuizService {
                 .isCorrect(isCorrect)
                 .result(result)
                 .userAnswer(answer)
-                .correctAnswer(correct)
+                .correctAnswer(formatCorrectAnswer(question))
                 .explanation(question.getExplanation())
                 .feedback(feedback)
                 .noteReference(question.getNoteReference())
@@ -288,5 +332,63 @@ public class QuizService {
 
     private int calculateScorePercent(int correctCount, Integer totalQuestions) {
         return totalQuestions == null || totalQuestions == 0 ? 0 : (correctCount * 100) / totalQuestions;
+    }
+
+    private Object formatCorrectAnswer(QuizQuestion question) {
+        if (question.getType() == QuizQuestionType.TRUE_FALSE) {
+            return Boolean.parseBoolean(normalizeBoolean(question.getCorrectAnswer()));
+        }
+        return question.getCorrectAnswer();
+    }
+
+    private String buildQuriMessage(int scorePercent, int correctCount, Integer totalQuestions, List<String> weakTopics) {
+        if (scorePercent == 100) {
+            return "완벽해요! 🎉 노트 정리를 정말 잘 하셨네요!";
+        }
+        if (scorePercent >= 80) {
+            String topic = weakTopics == null || weakTopics.isEmpty() ? "헷갈린" : weakTopics.get(0);
+            int total = totalQuestions == null ? 0 : totalQuestions;
+            return total + "문제 중 " + correctCount + "개를 맞혔어요! '" + topic + "' 부분을 노트에서 한 번 더 확인해 보세요.";
+        }
+        if (scorePercent >= 60) {
+            return "절반 이상 맞혔어요! 노트를 보충하고 다시 도전해 볼까요?";
+        }
+        if (scorePercent >= 40) {
+            return "조금 어려웠나요? 노트를 다시 읽어보고 한 번 더 풀어봐요!";
+        }
+        return "괜찮아요! 노트를 보충하면 다음에는 더 잘 할 수 있어요 💪";
+    }
+
+    private boolean matchesKeywords(String user, List<String> keywords) {
+        if (user == null || keywords == null) return false;
+        String normalizedUser = normalize(user).toLowerCase();
+        return keywords.stream().filter(Objects::nonNull).map(String::trim).map(String::toLowerCase).anyMatch(normalizedUser::equals);
+    }
+
+    private String writeJson(Object value) {
+        try { return objectMapper.writeValueAsString(value); } catch (Exception e) { throw new IllegalStateException(e); }
+    }
+
+    private QuizSubmitResponse toResponse(QuizResult result, QuizSession session) {
+        try {
+            return QuizSubmitResponse.builder()
+                    .quizSessionId(session.getId())
+                    .totalQuestions(result.getTotalQuestions())
+                    .correctCount(result.getCorrectCount())
+                    .scorePercent(result.getScorePercent())
+                    .results(objectMapper.readValue(result.getAnswersJson(), objectMapper.getTypeFactory().constructCollectionType(List.class, QuizSubmitResponse.ResultDto.class)))
+                    .quriMessage(buildQuriMessage(result.getScorePercent(), result.getCorrectCount(), result.getTotalQuestions(), readWeakTopics(result.getWeakTopicsJson())))
+                    .weakTopics(readWeakTopics(result.getWeakTopicsJson()))
+                    .build();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private List<String> readWeakTopics(String weakTopicsJson) throws java.io.IOException {
+        if (weakTopicsJson == null || weakTopicsJson.isBlank()) {
+            return List.of();
+        }
+        return objectMapper.readValue(weakTopicsJson, objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
     }
 }

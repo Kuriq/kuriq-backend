@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Collection;
+import java.util.Optional;
 
 public interface QuizSessionRepository extends JpaRepository<QuizSession, String> {
 
@@ -14,4 +15,8 @@ public interface QuizSessionRepository extends JpaRepository<QuizSession, String
     Page<QuizSession> findByUserIdAndCourseId(String userId, String courseId, Pageable pageable);
 
     Page<QuizSession> findByUserId(String userId, Pageable pageable);
+
+    Optional<QuizSession> findByIdAndUserId(String id, String userId);
+
+    boolean existsByIdAndUserId(String id, String userId);
 }
