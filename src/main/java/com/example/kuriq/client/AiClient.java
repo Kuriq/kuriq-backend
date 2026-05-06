@@ -1,5 +1,6 @@
 package com.example.kuriq.client;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -103,6 +104,43 @@ public class AiClient {
         private String correctAnswer;
     }
 
+    @Getter
+    @Builder
+    public static class ChatAiRequest {
+        @JsonProperty("note_id")
+        private String noteId;
+
+        @JsonProperty("note_content")
+        private String noteContent;
+
+        @JsonProperty("course_metadata")
+        private String courseMetadata;
+
+        @JsonProperty("recent_history")
+        private List<ChatHistoryItem> recentHistory;
+
+        private String message;
+
+        @JsonProperty("user_id")
+        private String userId;
+
+        @Getter
+        @Builder
+        public static class ChatHistoryItem {
+            private String role;
+            private String message;
+        }
+    }
+
+    @Getter
+    @Setter
+    public static class ChatAiResponse {
+        private String message;
+
+        @JsonProperty("note_references")
+        private List<String> noteReferences;
+    }
+
     public RoadmapGenerateAiResponse generateRoadmap(RoadmapGenerateAiRequest request) {
         RoadmapGenerateAiResponse response = new RoadmapGenerateAiResponse();
         response.setGoal("임시 학습 목표");
@@ -161,6 +199,16 @@ public class AiClient {
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(QuizGradeAiResponse.class)
+                .block(Duration.ofSeconds(10));
+    }
+
+    public ChatAiResponse chat(ChatAiRequest request) {
+        return aiWebClient.post()
+                .uri("/internal/ai/chat")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(ChatAiResponse.class)
                 .block(Duration.ofSeconds(10));
     }
 
