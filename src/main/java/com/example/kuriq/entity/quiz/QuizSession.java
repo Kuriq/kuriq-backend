@@ -30,6 +30,13 @@ public class QuizSession {
     @Column(nullable = false, length = 36)
     private String noteId;
 
+    @Builder.Default
+    @Column(nullable = false)
+    private Integer correctCount = 0;
+
+    @Column(nullable = false)
+    private Integer totalQuestions;
+
     @OneToMany(mappedBy = "quizSession", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("orderIndex ASC")
     @Builder.Default
@@ -40,6 +47,9 @@ public class QuizSession {
 
     @PrePersist
     private void prePersist() {
+        if (correctCount == null) {
+            correctCount = 0;
+        }
         createdAt = LocalDateTime.now();
     }
 }

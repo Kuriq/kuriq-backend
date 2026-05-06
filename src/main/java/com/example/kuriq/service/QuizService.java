@@ -1,6 +1,7 @@
 package com.example.kuriq.service;
 
 import com.example.kuriq.client.AiClient;
+import com.example.kuriq.dto.quiz.response.QuizHistoryResponse;
 import com.example.kuriq.dto.quiz.request.QuizGenerateRequest;
 import com.example.kuriq.dto.quiz.response.QuizGenerateResponse;
 import com.example.kuriq.entity.quiz.QuizOption;
@@ -8,7 +9,12 @@ import com.example.kuriq.entity.quiz.QuizQuestion;
 import com.example.kuriq.entity.quiz.QuizQuestionType;
 import com.example.kuriq.entity.quiz.QuizSession;
 import com.example.kuriq.repository.quiz.QuizSessionRepository;
+import com.example.kuriq.repository.roadmap.CourseRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +30,7 @@ import java.util.stream.Collectors;
 public class QuizService {
 
     private final QuizSessionRepository quizSessionRepository;
+    private final CourseRepository courseRepository;
     private final AiClient aiClient;
 
     public QuizGenerateResponse generate(QuizGenerateRequest request, String userId) {
@@ -41,6 +48,7 @@ public class QuizService {
                 .userId(userId)
                 .courseId(aiResponse.getCourseId())
                 .noteId(request.getNoteId())
+                .totalQuestions(aiResponse.getQuestions().size())
                 .build();
 
         for (int questionIndex = 0; questionIndex < aiResponse.getQuestions().size(); questionIndex++) {
@@ -83,6 +91,23 @@ public class QuizService {
                                 .collect(Collectors.toList()) : null)
                         .build()).collect(Collectors.toList()))
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public QuizHistoryResponse history(String userId, String courseId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        var sessions = courseId == null || courseId.isBlank()
+                ? quizSessionRepository.findByUserId(userId, pageable)
+                : quizSessionRepository.findByUserIdAndCourseId(userId, courseId, pageable);
+
+        var content = sessions.getContent().stream().map(session -> {
+            String courseTitle = courseRepository.findById(session.getCourseId())
+                    .map(course -> course.getTitle())
+                    .orElse(null);
+            return QuizHistoryResponse.Item.from(session, courseTitle);
+        }).toList();
+
+        return QuizHistoryResponse.from(new PageImpl<>(content, pageable, sessions.getTotalElements()));
     }
 
     private void validateExcludedSessions(List<String> excludeSessionIds, String userId) {
