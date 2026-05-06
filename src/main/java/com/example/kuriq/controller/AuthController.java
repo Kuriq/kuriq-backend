@@ -2,6 +2,8 @@ package com.example.kuriq.controller;
 
 import com.example.kuriq.dto.user.request.PasswordResetConfirmRequest;
 import com.example.kuriq.dto.user.request.PasswordResetRequest;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 
@@ -55,30 +57,36 @@ public class AuthController {
     }
 
     // 로그아웃
-    @Operation(summary = "로그아웃")
+    @Operation(summary = "로그아웃",
+            description = "refreshToken은 HttpOnly 쿠키로 자동 전송됩니다. 별도 입력 불필요.")
+
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
             HttpServletRequest httpReq,
             HttpServletResponse httpRes) {
-        String token = extractRefreshCookie(httpReq);
-        if (token != null) authService.logout(token);
-        clearRefreshCookie(httpRes);
-        return ResponseEntity.noContent().build();
+        String token = extractRefreshCookie(httpReq); // 쿠키에서 refreshToken 추출
+        if (token != null) authService.logout(token); // 토큰이 있으면 DB에서 무효화(revoke)
+        clearRefreshCookie(httpRes); // 클라이언트 쿠키 삭제
+        return ResponseEntity.noContent().build(); // 204 No Content 반환
     }
 
-    // 토큰 갱신
+    /** 토큰 갱신 */
+
+    // Swagger 문서에 refreshToken 쿠키 파라미터 표시
+    // HttpOnly라 UI에서 직접 입력은 불가, 로그인 후 브라우저 쿠키 자동 전송
+    @Operation(summary = "토큰 갱신",
+            description = "refreshToken은 HttpOnly 쿠키로 자동 전송됩니다. 별도 입력 불필요.")
+
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(
             HttpServletRequest httpReq,
             HttpServletResponse httpRes) {
         String token = extractRefreshCookie(httpReq);
-        if (token == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        String[] newTokens = authService.refresh(token);
-        setRefreshCookie(httpRes, newTokens[1]);
-        return ResponseEntity.ok(AuthResponse.of(newTokens[0]));
+        if (token == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build(); // 쿠키 없으면 401 반환
+        String[] newTokens = authService.refresh(token);  // 토큰 검증 후 새 토큰 쌍 발급 (Token Rotation)
+        setRefreshCookie(httpRes, newTokens[1]);  // 새 refreshToken을 쿠키로 교체
+        return ResponseEntity.ok(AuthResponse.of(newTokens[0]));  // 새 accessToken만 바디로 반환
     }
-
-    // 쿠키 헬퍼
 
     // Refresh Token을 HttpOnly 쿠키로 설정 (JS 접근 불가 → XSS 방어)
     private void setRefreshCookie(HttpServletResponse res, String token) {

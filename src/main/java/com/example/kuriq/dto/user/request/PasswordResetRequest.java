@@ -13,7 +13,7 @@ import lombok.Getter;
 @Schema(description = "비밀번호 재설정 요청")
 public class PasswordResetRequest {
 
-    @Schema(description = "가입한 이메일", example = "test@test.com")
+    @Schema(description = "가입한 이메일", example = "hyunjung26@skuniv.ac.kr")
     @NotBlank(message = "이메일을 입력해 주세요")
     @Email(message = "이메일 형식이 올바르지 않습니다")
     private String email;

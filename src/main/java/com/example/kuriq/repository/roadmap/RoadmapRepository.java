@@ -26,7 +26,7 @@ public interface RoadmapRepository extends JpaRepository<Roadmap, String> {
 
     // 현재 사용자가 진행 중인(active) 로드맵을 조회
     // userId + isActive = true 조건은 최대 1건이므로 Optional로 반환한다.
-    // 사용처: 대시보드 기본 로드맵 조회
+    // 사용처: 대시보드 기본 로드맵 조회, 알림 발송
     Optional<Roadmap> findByUserIdAndIsActiveTrue(String userId);
 
     // 용자의 전체 로드맵 목록을 생성일 기준 내림차순으로 조회
@@ -93,4 +93,5 @@ public interface RoadmapRepository extends JpaRepository<Roadmap, String> {
     WHERE r.id = :roadmapId
     """)
     Optional<Roadmap> findByIdWithItems(@Param("roadmapId") String roadmapId);
+
 }

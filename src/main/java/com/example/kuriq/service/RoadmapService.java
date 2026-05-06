@@ -3,7 +3,10 @@ package com.example.kuriq.service;
 import com.example.kuriq.client.AiClient;
 import com.example.kuriq.dto.roadmap.response.RoadmapResponse;
 import com.example.kuriq.entity.roadmap.*;
+import com.example.kuriq.entity.user.User;
+import com.example.kuriq.repository.notification.NotificationSettingRepository;
 import com.example.kuriq.repository.roadmap.*;
+import com.example.kuriq.repository.user.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +30,10 @@ public class RoadmapService {
     private final CourseRepository courseRepository;
     private final LearningHistoryRepository learningHistoryRepository;
     private final AiClient aiClient;
+    private final NotificationSettingRepository notificationSettingRepository;
+    private final UserRepository userRepository;
+    private final EmailService emailService;
+    private static final String DASHBOARD_URL = "https://kuriq.com/dashboard";
 
     // 로드맵 생성
     public RoadmapResponse generateRoadmap(String prompt, String userId) {
@@ -141,6 +148,17 @@ public class RoadmapService {
         if (item.getRoadmap().allItemsCompleted()) {
             item.getRoadmap().complete();
             log.info("로드맵 전체 완료: roadmapId={}", item.getRoadmap().getId());
+
+            // 완료 축하 알림 (로드맵 전체 완료 시에만 발송)
+            notificationSettingRepository.findCompletionAlertTarget(userId)
+                    .ifPresent(ns -> {
+                        User user = userRepository.findById(userId).orElse(null);
+                        if (user != null && user.getEmail() != null) {
+                            emailService.sendCompletionEmail(
+                                    user.getEmail(), userId, user.getName(),
+                                    item.getRoadmap().getGoal(), DASHBOARD_URL);
+                        }
+                    });
         }
 
         return RoadmapResponse.RoadmapItemResponse.from(item);

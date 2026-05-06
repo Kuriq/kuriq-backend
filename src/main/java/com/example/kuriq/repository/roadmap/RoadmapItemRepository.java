@@ -40,11 +40,13 @@ public interface RoadmapItemRepository extends JpaRepository<RoadmapItem, String
     // 사용처: 주차별 진행률 계산
     long countByRoadmapIdAndWeekNumber(String roadmapId, int weekNumber);
 
-    // 특정 주차에서 완료된 강좌 수를 조회한다.
+    // 특정 주차에서 완료된 강좌 수를 조회
     // 사용처: 주차별 진행률 계산 (완료 수 / 전체 수)
     long countByRoadmapIdAndWeekNumberAndIsCompletedTrue(String roadmapId, int weekNumber);
 
-    // 동일 로드맵 내에서 특정 강좌(courseId)가 이미 존재하는지 확인
-    // 사용처: AI 추천/생성 시 중복 강좌 방지
+    // 동일 로드맵 내에서 특정 강좌(courseId)가 이미 존재하는지 확인(AI 추천/생성 시 중복 강좌 방지용)
     boolean existsByRoadmapIdAndCourseId(String roadmapId, String courseId);
+
+    // 특정 주차에서 미완료된 강좌 수 조회 (미완료 리마인드 알림 발송 조건 체크용)
+    long countByRoadmapIdAndWeekNumberAndIsCompletedFalse(String roadmapId, int weekNumber);
 }

@@ -47,6 +47,10 @@ public class SecurityConfig {
                                 "/api/v1/auth/password-reset/request",
                                 "/api/v1/auth/password-reset/confirm"
                         ).permitAll()
+                        // 알림 수신 거부는 PATCH 메서드로 별도 추가
+                        .requestMatchers(HttpMethod.PATCH,
+                                "/api/v1/notifications/unsubscribe"
+                        ).permitAll()
                         // Swagger UI 허용
                         .requestMatchers(
                                 "/swagger-ui.html",
