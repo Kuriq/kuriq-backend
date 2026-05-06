@@ -10,6 +10,7 @@ import java.util.List;
 @Entity
 @Table(name = "quiz_questions")
 @Getter
+@Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder
@@ -46,8 +47,15 @@ public class QuizQuestion {
     @Column(length = 500)
     private String weakTopic;
 
+    @Convert(converter = JsonStringListConverter.class)
+    @Column(length = 2000)
+    private List<String> acceptableKeywords;
+
     @OneToMany(mappedBy = "quizQuestion", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("orderIndex ASC")
     @Builder.Default
     private List<QuizOption> options = new ArrayList<>();
+
+    public void setCorrectAnswer(String correctAnswer) { this.correctAnswer = correctAnswer; }
+    public void setOptions(List<QuizOption> options) { this.options = options; }
 }

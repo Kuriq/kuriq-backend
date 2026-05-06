@@ -1,14 +1,20 @@
 package com.example.kuriq.client;
 
 import lombok.*;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
 @Component
+@RequiredArgsConstructor
 public class AiClient {
+
+    private final WebClient aiWebClient;
 
     @Getter
     @Builder
@@ -68,6 +74,7 @@ public class AiClient {
             private String explanation;
             private String noteReference;
             private String weakTopic;
+            private List<String> acceptableKeywords;
         }
 
         @Getter
@@ -78,7 +85,24 @@ public class AiClient {
         }
     }
 
-    // TODO: AI 서버 연동 전 임시 응답
+    @Getter
+    @Builder
+    public static class QuizGradeAiRequest {
+        private String question;
+        private String correctAnswer;
+        private List<String> acceptableKeywords;
+        private String userAnswer;
+        private String userId;
+    }
+
+    @Getter
+    @Setter
+    public static class QuizGradeAiResponse {
+        private String result;
+        private String feedback;
+        private String correctAnswer;
+    }
+
     public RoadmapGenerateAiResponse generateRoadmap(RoadmapGenerateAiRequest request) {
         RoadmapGenerateAiResponse response = new RoadmapGenerateAiResponse();
         response.setGoal("임시 학습 목표");
@@ -96,11 +120,12 @@ public class AiClient {
         q1.setQuestionId(UUID.nameUUIDFromBytes((request.getNoteId() + ":q1").getBytes(StandardCharsets.UTF_8)).toString());
         q1.setType("MULTIPLE_CHOICE");
         q1.setQuestion("노트에서 정리한 내용 중, 파이썬에서 변수를 생성할 때 필요한 것은?");
-        QuizGenerateAiResponse.OptionDto o1 = createOption("A", "타입 선언 후 값 할당");
-        QuizGenerateAiResponse.OptionDto o2 = createOption("B", "값 할당만으로 생성");
-        QuizGenerateAiResponse.OptionDto o3 = createOption("C", "var 키워드 사용");
-        QuizGenerateAiResponse.OptionDto o4 = createOption("D", "new 키워드 사용");
-        q1.setOptions(List.of(o1, o2, o3, o4));
+        q1.setOptions(List.of(
+                createOption("A", "타입 선언 후 값 할당"),
+                createOption("B", "값 할당만으로 생성"),
+                createOption("C", "var 키워드 사용"),
+                createOption("D", "new 키워드 사용")
+        ));
         q1.setCorrectAnswer("B");
         q1.setExplanation("파이썬은 타입 선언 없이 값 할당만으로 변수를 만들 수 있습니다.");
         q1.setNoteReference("변수의 선언과 할당");
@@ -110,7 +135,6 @@ public class AiClient {
         q2.setQuestionId(UUID.nameUUIDFromBytes((request.getNoteId() + ":q2").getBytes(StandardCharsets.UTF_8)).toString());
         q2.setType("TRUE_FALSE");
         q2.setQuestion("파이썬의 인덱스는 1부터 시작한다.");
-        q2.setOptions(null);
         q2.setCorrectAnswer("false");
         q2.setExplanation("파이썬의 인덱스는 0부터 시작합니다.");
         q2.setNoteReference("리스트 인덱스");
@@ -120,14 +144,24 @@ public class AiClient {
         q3.setQuestionId(UUID.nameUUIDFromBytes((request.getNoteId() + ":q3").getBytes(StandardCharsets.UTF_8)).toString());
         q3.setType("SHORT_ANSWER");
         q3.setQuestion("파이썬에서 여러 값을 순서대로 저장하면서 수정도 가능한 자료형은?");
-        q3.setOptions(null);
         q3.setCorrectAnswer("리스트");
         q3.setExplanation("여러 값을 순서대로 저장하고 수정 가능한 대표 자료형은 리스트입니다.");
         q3.setNoteReference("자료형 개요");
         q3.setWeakTopic("자료형 명칭");
+        q3.setAcceptableKeywords(List.of("리스트", "list"));
 
         response.setQuestions(List.of(q1, q2, q3));
         return response;
+    }
+
+    public QuizGradeAiResponse gradeShortAnswer(QuizGradeAiRequest request) {
+        return aiWebClient.post()
+                .uri("/internal/ai/quiz/grade")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(QuizGradeAiResponse.class)
+                .block(Duration.ofSeconds(10));
     }
 
     private QuizGenerateAiResponse.OptionDto createOption(String id, String text) {
