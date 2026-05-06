@@ -37,6 +37,12 @@ public class QuizSession {
     @Column(nullable = false)
     private Integer totalQuestions;
 
+    @Column
+    private Integer submittedCorrectCount;
+
+    @Column
+    private LocalDateTime submittedAt;
+
     @OneToMany(mappedBy = "quizSession", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("orderIndex ASC")
     @Builder.Default
@@ -51,5 +57,11 @@ public class QuizSession {
             correctCount = 0;
         }
         createdAt = LocalDateTime.now();
+    }
+
+    public void submitScore(Integer correctCount) {
+        this.correctCount = correctCount;
+        this.submittedCorrectCount = correctCount;
+        this.submittedAt = LocalDateTime.now();
     }
 }

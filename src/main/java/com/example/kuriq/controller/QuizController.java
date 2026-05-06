@@ -1,8 +1,10 @@
 package com.example.kuriq.controller;
 
 import com.example.kuriq.dto.quiz.request.QuizGenerateRequest;
+import com.example.kuriq.dto.quiz.request.QuizSubmitRequest;
 import com.example.kuriq.dto.quiz.response.QuizHistoryResponse;
 import com.example.kuriq.dto.quiz.response.QuizGenerateResponse;
+import com.example.kuriq.dto.quiz.response.QuizSubmitResponse;
 import com.example.kuriq.service.QuizService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -42,5 +45,13 @@ public class QuizController {
                                                        @RequestParam(defaultValue = "0") int page,
                                                        @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(quizService.history(userId, courseId, page, size));
+    }
+
+    @Operation(summary = "퀴즈 제출")
+    @PostMapping("/{quizSessionId}/submit")
+    public ResponseEntity<QuizSubmitResponse> submit(@Valid @RequestBody QuizSubmitRequest request,
+                                                     @AuthenticationPrincipal String userId,
+                                                     @PathVariable String quizSessionId) {
+        return ResponseEntity.ok(quizService.submit(quizSessionId, request, userId));
     }
 }

@@ -34,6 +34,18 @@ public class QuizQuestion {
     @Column(nullable = false, length = 1000)
     private String question;
 
+    @Column(length = 1000)
+    private String correctAnswer;
+
+    @Column(length = 2000)
+    private String explanation;
+
+    @Column(length = 500)
+    private String noteReference;
+
+    @Column(length = 500)
+    private String weakTopic;
+
     @OneToMany(mappedBy = "quizQuestion", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("orderIndex ASC")
     @Builder.Default
