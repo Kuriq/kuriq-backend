@@ -16,6 +16,6 @@ public class QuizGenerateRequest {
     @Pattern(regexp = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", message = "noteId는 UUID 형식이어야 합니다")
     private String noteId;
 
-    @Schema(description = "중복 방지용 이전 퀴즈 세션 ID 목록", example = "[\"660e8400-e29b-41d4-a716-446655440000\"]")
+    @Schema(description = "중복 방지용 이전 퀴즈 세션 ID 목록. 테스트 시에는 비워두거나 생략하세요.", example = "[]")
     private List<@Pattern(regexp = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", message = "excludeSessionIds는 UUID 형식이어야 합니다") String> excludeSessionIds;
 }

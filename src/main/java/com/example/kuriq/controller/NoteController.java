@@ -40,7 +40,7 @@ public class NoteController {
                     mediaType = "application/json",
                     examples = @ExampleObject(value = """
                             {
-                              "courseId": "550e8400-e29b-41d4-a716-446655440000",
+                              "courseId": "11111111-1111-1111-1111-111111111111",
                               "content": "파이썬 리스트: 순서가 있고 수정 가능한 자료형. append로 값을 추가할 수 있다."
                             }
                             """)

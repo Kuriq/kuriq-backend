@@ -5,8 +5,10 @@ import com.example.kuriq.dto.chat.request.ChatSendRequest;
 import com.example.kuriq.dto.chat.response.ChatHistoryResponse;
 import com.example.kuriq.dto.chat.response.ChatSendResponse;
 import com.example.kuriq.entity.chat.ChatMessage;
+import com.example.kuriq.entity.note.LearningNote;
 import com.example.kuriq.exception.ApiException;
 import com.example.kuriq.repository.chat.ChatMessageRepository;
+import com.example.kuriq.repository.note.LearningNoteRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.PageRequest;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.Objects;
 import java.util.List;
 
 @Service
@@ -23,6 +26,7 @@ import java.util.List;
 public class NoteChatService {
 
     private final ChatMessageRepository chatMessageRepository;
+    private final LearningNoteRepository learningNoteRepository;
     private final AiClient aiClient;
 
     public void resetHistory(String noteId, String userId) {
@@ -41,7 +45,13 @@ public class NoteChatService {
     }
 
     public ChatSendResponse sendMessage(String noteId, String userId, ChatSendRequest request) {
-        List<AiClient.ChatAiRequest.ChatHistoryItem> recentHistory = chatMessageRepository
+        LearningNote note = learningNoteRepository.findById(noteId)
+                .orElseThrow(() -> new ApiException("NOTE_NOT_FOUND", "노트를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
+        if (!Objects.equals(note.getUserId(), userId)) {
+            throw new ApiException("FORBIDDEN", "이 노트에 접근할 수 없습니다.", HttpStatus.FORBIDDEN);
+        }
+
+        List<AiClient.ChatAiRequest.ChatHistoryItem> chatHistory = chatMessageRepository
                 .findTop20ByUserIdAndNoteIdOrderByCreatedAtDesc(userId, noteId)
                 .stream()
                 .sorted((a, b) -> a.getCreatedAt().compareTo(b.getCreatedAt()))
@@ -62,11 +72,12 @@ public class NoteChatService {
         AiClient.ChatAiResponse aiResponse;
         try {
             aiResponse = aiClient.chat(AiClient.ChatAiRequest.builder()
-                    .noteId(noteId)
-                    .noteContent("")
-                    .courseMetadata("")
-                    .recentHistory(recentHistory)
                     .message(userMessage.getMessage())
+                    .noteContent(note.getContent())
+                    .courseTitle(note.getCourse().getTitle())
+                    .courseCategory(note.getCourse().getCategory() == null ? "기타" : note.getCourse().getCategory())
+                    .courseDifficulty(note.getCourse().getDifficulty() == null ? "입문" : note.getCourse().getDifficulty())
+                    .chatHistory(chatHistory)
                     .userId(userId)
                     .build());
         } catch (Exception e) {

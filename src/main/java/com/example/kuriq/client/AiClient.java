@@ -108,21 +108,12 @@ public class AiClient {
     @Getter
     @Builder
     public static class ChatAiRequest {
-        @JsonProperty("note_id")
-        private String noteId;
-
-        @JsonProperty("note_content")
-        private String noteContent;
-
-        @JsonProperty("course_metadata")
-        private String courseMetadata;
-
-        @JsonProperty("recent_history")
-        private List<ChatHistoryItem> recentHistory;
-
         private String message;
-
-        @JsonProperty("user_id")
+        private String noteContent;
+        private String courseTitle;
+        private String courseCategory;
+        private String courseDifficulty;
+        private List<ChatHistoryItem> chatHistory;
         private String userId;
 
         @Getter
@@ -137,8 +128,6 @@ public class AiClient {
     @Setter
     public static class ChatAiResponse {
         private String message;
-
-        @JsonProperty("note_references")
         private List<String> noteReferences;
     }
 

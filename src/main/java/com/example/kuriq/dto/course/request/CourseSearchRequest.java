@@ -11,10 +11,10 @@ import lombok.Setter;
 @Schema(description = "강좌 검색 요청 파라미터")
 public class CourseSearchRequest {
 
-    @Schema(description = "검색어. 강좌명, 기관명, 설명에서 검색합니다.", example = "자바")
+    @Schema(description = "검색어. 강좌명, 기관명, 설명에서 검색합니다.", example = "파이썬")
     private String keyword;
 
-    @Schema(description = "제공 플랫폼", example = "K-MOOC")
+    @Schema(description = "제공 플랫폼", example = "kuriq-test")
     private String platform;
 
     @Schema(description = "난이도", example = "초급")
@@ -23,10 +23,10 @@ public class CourseSearchRequest {
     @Schema(description = "카테고리", example = "프로그래밍")
     private String category;
 
-    @Schema(description = "수강 기간 범위. 0-4, 5-8, 9-12, 13+ 또는 숫자 기반 min-max/min+ 형식을 지원합니다.", example = "5-8")
+    @Schema(description = "수강 기간 범위. 0-4, 5-8, 9-12, 13+ 또는 숫자 기반 min-max/min+ 형식을 지원합니다.", example = "0-4")
     private String durationRange;
 
-    @Schema(description = "수료증 제공 여부", example = "true")
+    @Schema(description = "수료증 제공 여부", example = "false")
     private Boolean hasCertificate;
 
     @Schema(description = "정렬 기준: latest, title, duration, hours", example = "latest", defaultValue = "latest")
