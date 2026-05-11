@@ -2,22 +2,36 @@ package com.example.kuriq.service;
 
 import com.example.kuriq.dto.notification.request.NotificationUpdateRequest;
 import com.example.kuriq.dto.notification.response.NotificationResponse;
+import com.example.kuriq.dto.user.response.CategoryStatsResponse;
+import com.example.kuriq.dto.user.response.LearningHistoryResponse;
 import com.example.kuriq.dto.user.response.SocialAccountResponse;
+import com.example.kuriq.dto.user.response.UserStatsResponse;
 import com.example.kuriq.entity.notification.NotificationSetting;
 import com.example.kuriq.entity.notification.UnsubscribeToken;
+import com.example.kuriq.entity.roadmap.Course;
+import com.example.kuriq.entity.roadmap.LearningHistory;
 import com.example.kuriq.entity.user.SocialAccount;
 import com.example.kuriq.entity.user.User;
 import com.example.kuriq.repository.notification.NotificationSettingRepository;
 import com.example.kuriq.repository.notification.UnsubscribeTokenRepository;
+import com.example.kuriq.repository.roadmap.CourseRepository;
+import com.example.kuriq.repository.roadmap.LearningHistoryRepository;
+import com.example.kuriq.repository.roadmap.RoadmapRepository;
 import com.example.kuriq.repository.user.RefreshTokenRepository;
 import com.example.kuriq.repository.user.SocialAccountRepository;
 import com.example.kuriq.repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -32,6 +46,9 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final NotificationSettingRepository notificationSettingRepository;
     private final UnsubscribeTokenRepository unsubscribeTokenRepository;
+    private final LearningHistoryRepository learningHistoryRepository;
+    private final CourseRepository courseRepository;
+    private final RoadmapRepository roadmapRepository;
 
     // 프로필 조회
     public User getUser(String userId) {
@@ -129,5 +146,119 @@ public class UserService {
 
         // 사용한 토큰 삭제 (1회용)
         unsubscribeTokenRepository.delete(unsubscribeToken);
+    }
+
+    // 학습 통계
+    public UserStatsResponse getStats(String userId) {
+
+        // 이수 강좌 총 개수
+        // learning_history 테이블 COUNT
+        long totalCourses = learningHistoryRepository.countByUserId(userId);
+
+        // 총 학습 시간
+        // 이수한 강좌들의 estimated_hours 합산
+        BigDecimal totalHours = learningHistoryRepository.sumEstimatedHoursByUserId(userId);
+
+        // 연속 학습 일수 계산
+        // completedAt 날짜 기준으로 오늘부터 카운트
+        List<LearningHistory> histories = learningHistoryRepository
+                .findByUserIdOrderByCompletedAtDesc(userId);
+
+        int streakDays = 0;
+        if (!histories.isEmpty()) {
+
+            // completedAt에서 날짜만 추출해서 Set으로 만듦 (중복 제거)
+            Set<LocalDate> datesWithActivity = histories.stream()
+                    .map(h -> h.getCompletedAt().toLocalDate())
+                    .collect(Collectors.toSet());
+
+            LocalDate check = LocalDate.now();
+
+            // 오늘 활동이 없으면 어제부터 체크 시작
+            if (!datesWithActivity.contains(check)) {
+                check = check.minusDays(1);
+            }
+
+            // 날짜가 연속으로 존재하는 동안 하루씩 올라가며 카운트
+            while (datesWithActivity.contains(check)) {
+                streakDays++;
+                check = check.minusDays(1);
+            }
+        }
+
+        // 완료 로드맵 수
+        // roadmaps 테이블에서 is_completed = true 카운트
+        long completedRoadmaps = roadmapRepository.countByUserIdAndIsCompletedTrue(userId);
+
+        return UserStatsResponse.builder()
+                .totalCompletedCourses(totalCourses)
+                .totalLearningHours(totalHours)
+                .streakDays(streakDays)
+                .completedRoadmapCount(completedRoadmaps)
+                .build();
+    }
+
+    // 분야별 학습 현황
+    public List<CategoryStatsResponse> getCategoryStats(String userId) {
+
+        // 카테고리별 이수 강좌 수 조회
+        // 이수 수 내림차순 정렬
+        List<Object[]> rows = learningHistoryRepository.countByCategoryForUser(userId);
+
+        // 이력 없으면 빈 리스트 반환
+        if (rows.isEmpty()) return List.of();
+
+        // 가장 많이 이수한 카테고리 수를 기준으로 상대 진행률 계산
+        // 이미 내림차순 정렬이라 첫 번째 값이 최대값
+        long maxCount = ((Number) rows.get(0)[1]).longValue();
+
+        return rows.stream().map(row -> {
+            String category = (String) row[0];
+            long count      = ((Number) row[1]).longValue();
+
+            // 상대 진행률 계산 (소수점 1자리)
+            double percent = maxCount == 0 ? 0 : (double) count / maxCount * 100;
+
+            return CategoryStatsResponse.builder()
+                    .category(category)
+                    .completedCount(count)
+                    .progressPercent(Math.round(percent * 10.0) / 10.0)
+                    .build();
+        }).toList();
+    }
+
+    // 학습 이력 조회
+    public List<LearningHistoryResponse> getLearningHistory(String userId, int page, int size) {
+
+        // 최신순 페이징 조회
+        Pageable pageable = PageRequest.of(page, size);
+        List<LearningHistory> histories = learningHistoryRepository
+                .findByUserIdOrderByCompletedAtDesc(userId, pageable);
+
+        // 이력 없으면 빈 리스트 반환
+        if (histories.isEmpty()) return List.of();
+
+        // courseId 목록 추출
+        // distinct로 중복 제거 후 배치 조회 → N+1 방지
+        List<String> courseIds = histories.stream()
+                .map(LearningHistory::getCourseId)
+                .distinct()
+                .toList();
+
+        // courseId → Course Map으로 변환
+        // DTO 변환 시 Map에서 바로 꺼내 씀
+        Map<String, Course> courseMap = courseRepository.findAllById(courseIds)
+                .stream()
+                .collect(Collectors.toMap(Course::getId, c -> c));
+
+        // 이력 DTO 변환
+        // 강좌가 삭제된 경우 기본값으로 대체
+        return histories.stream().map(h -> {
+            Course course   = courseMap.get(h.getCourseId());
+            String title    = course != null ? course.getTitle()    : "삭제된 강좌";
+            String platform = course != null ? course.getPlatform() : "-";
+            String category = course != null ? course.getCategory() : "-";
+            return LearningHistoryResponse.from(h, title, platform, category);
+        }).toList();
     }
 }
