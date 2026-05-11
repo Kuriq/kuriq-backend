@@ -3,16 +3,12 @@ package com.example.kuriq.service;
 import com.example.kuriq.dto.user.request.LoginRequest;
 import com.example.kuriq.dto.user.request.SignupRequest;
 import com.example.kuriq.entity.notification.NotificationSetting;
-import com.example.kuriq.entity.user.LoginAttempt;
-import com.example.kuriq.entity.user.PasswordResetToken;
-import com.example.kuriq.entity.user.RefreshToken;
-import com.example.kuriq.entity.user.User;
+import com.example.kuriq.entity.user.*;
 import com.example.kuriq.repository.notification.NotificationSettingRepository;
-import com.example.kuriq.repository.user.LoginAttemptRepository;
-import com.example.kuriq.repository.user.PasswordResetTokenRepository;
-import com.example.kuriq.repository.user.RefreshTokenRepository;
-import com.example.kuriq.repository.user.UserRepository;
+import com.example.kuriq.repository.user.*;
 import com.example.kuriq.security.JwtProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,7 +18,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.Map;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 
 @Slf4j
 @Service
@@ -38,6 +39,17 @@ public class AuthService {
     private final NotificationSettingRepository notificationSettingRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailService emailService;  // 비번 재설정 시 이메일 발송 필드
+    private final SocialAccountRepository socialAccountRepository;  // 소셜 계정 연동 정보 저장/조회
+    private final RestTemplate restTemplate = new RestTemplate();   // 카카오 API 호출용 HTTP 클라이언트
+
+    @Value("${oauth.kakao.client-id}")
+    private String kakaoClientId;      // 카카오 앱 REST API 키 (application.properties에서 주입)
+
+    @Value("${oauth.kakao.redirect-uri}")
+    private String kakaoRedirectUri;   // 카카오 콘솔에 등록한 Redirect URI (application.properties에서 주입)
+
+    @Value("${oauth.kakao.client-secret}")
+    private String kakaoClientSecret;   // 카카오 클라이언트 시크릿 (토큰 요청 시 보안 검증용)
 
     // 회원가입
     public String signup(SignupRequest req) {
@@ -207,5 +219,122 @@ public class AuthService {
 
         user.changePassword(passwordEncoder.encode(newPassword));  // passwordEncoder로 암호화된 새 비밀번호를 받아 교체
         resetToken.markUsed();  // 재사용 방지
+    }
+
+    // 소셜 로그인 인증 URL 생성
+    // 프론트가 이 URL로 리다이렉트하면 카카오 로그인 페이지가 뜸
+    public String getSocialAuthorizationUrl(String provider) {
+        return switch (provider.toLowerCase()) {
+            case "kakao" -> "https://kauth.kakao.com/oauth/authorize"
+                    + "?client_id=" + kakaoClientId          // 카카오 앱 REST API 키
+                    + "&redirect_uri=" + kakaoRedirectUri    // 카카오 콘솔에 등록한 Redirect URI
+                    + "&response_type=code";                 // 인증 코드 방식
+            default -> throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
+        };
+    }
+
+    // 소셜 로그인 메인 로직
+    public String[] socialLogin(String providerStr, String code) {
+        SocialAccount.Provider provider = parseProvider(providerStr); // "kakao" 문자열 → KAKAO enum 변환
+
+        // 1단계: 카카오 인증 서버에 code를 보내 accessToken 받기
+        String kakaoAccessToken = getKakaoAccessToken(code);
+
+        // 2단계: 발급받은 accessToken으로 카카오 사용자 정보 조회
+        Map<String, Object> kakaoUserInfo = getKakaoUserInfo(kakaoAccessToken);
+        String socialId = String.valueOf(kakaoUserInfo.get("id"));  // 카카오 고유 사용자 ID
+        Map<String, Object> kakaoAccount = (Map<String, Object>) kakaoUserInfo.get("kakao_account");
+        String email = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;  // 이메일 미동의 시 null
+        Map<String, Object> profile = kakaoAccount != null ? (Map<String, Object>) kakaoAccount.get("profile") : null;
+        String name = profile != null ? (String) profile.get("nickname") : "카카오 사용자";  // 닉네임 없으면 기본값
+
+        // 3단계: social_accounts 테이블에서 이미 연동된 계정인지 확인
+        SocialAccount existing = socialAccountRepository
+                .findByProviderAndSocialId(provider, socialId)
+                .orElse(null);
+
+        String userId;
+        if (existing != null) {
+            // 기존 소셜 계정 -> 연결된 userId로 바로 로그인
+            userId = existing.getUserId();
+        } else {
+            // 신규 계정 -> 동일 이메일로 가입된 로컬 계정이 있는지 먼저 확인
+            User user = (email != null)
+                    ? userRepository.findByEmailAndIsDeletedFalse(email).orElse(null)
+                    : null;
+
+            if (user == null) {
+                // 완전 새 유저 생성 (소셜 전용 계정은 password = null)
+                user = User.builder()
+                        .email(email)
+                        .password(null)                          // 소셜 전용 계정은 비밀번호 없음
+                        .name(name)
+                        .authProvider(User.AuthProvider.KAKAO)   // authProvider = KAKAO로 저장
+                        .isDeleted(false)
+                        .build();
+                userRepository.save(user);
+                notificationSettingRepository.save(NotificationSetting.createDefault(user.getId()));  // 알림 설정 기본값 생성
+            }
+
+            // social_accounts 테이블에 카카오 계정 연동 정보 저장
+            socialAccountRepository.save(
+                    SocialAccount.create(user.getId(), provider, socialId, email)
+            );
+            userId = user.getId();
+        }
+
+        // 4단계: JWT 발급
+        String accessToken = jwtProvider.generateAccessToken(userId);
+        String refreshToken = jwtProvider.generateRefreshToken(userId);
+        saveRefreshToken(userId, refreshToken);  // refreshToken은 해시로 DB 저장
+
+        return new String[]{accessToken, refreshToken};
+    }
+
+    // 카카오 인증 서버에 code를 보내 accessToken 교환
+    private String getKakaoAccessToken(String code) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);  // 카카오 API는 form 형식 요구
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "authorization_code");  // 인증 코드 방식 고정값
+        body.add("client_id", kakaoClientId);          // 카카오 앱 REST API 키
+        body.add("redirect_uri", kakaoRedirectUri);    // 콘솔에 등록한 URI와 반드시 동일해야 함
+        body.add("code", code);                        // 프론트에서 받아온 인증 코드
+        body.add("client_secret", kakaoClientSecret);  // 클라이언트 시크릿 추가 (보안 강화)
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                "https://kauth.kakao.com/oauth/token", request, Map.class);
+
+        if (response.getBody() == null || !response.getBody().containsKey("access_token")) {
+            throw new RuntimeException("카카오 토큰 발급 실패");
+        }
+        return (String) response.getBody().get("access_token");
+    }
+
+    // 카카오 API 서버에 accessToken을 보내 사용자 정보 조회
+    private Map<String, Object> getKakaoUserInfo(String kakaoAccessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(kakaoAccessToken);
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "https://kapi.kakao.com/v2/user/me", HttpMethod.GET, request, Map.class);
+
+        if (response.getBody() == null) {
+            throw new RuntimeException("카카오 사용자 정보 조회 실패");
+        }
+        return response.getBody();
+    }
+
+    // provider 문자열 -> SocialAccount.Provider enum 변환
+    // "kakao" -> KAKAO, 지원하지 않는 값이면 예외 발생
+    private SocialAccount.Provider parseProvider(String provider) {
+        try {
+            return SocialAccount.Provider.valueOf(provider.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
+        }
     }
 }

@@ -1,15 +1,12 @@
 package com.example.kuriq.controller;
 
-import com.example.kuriq.dto.user.request.PasswordResetConfirmRequest;
-import com.example.kuriq.dto.user.request.PasswordResetRequest;
+import com.example.kuriq.dto.user.request.*;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 
 import com.example.kuriq.dto.user.response.AuthResponse;
-import com.example.kuriq.dto.user.request.LoginRequest;
-import com.example.kuriq.dto.user.request.SignupRequest;
 import com.example.kuriq.service.AuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -143,5 +140,27 @@ public class AuthController {
         authService.confirmPasswordReset(req.getToken(), req.getNewPassword());
         // 성공 시 204 No Content 반환
         return ResponseEntity.noContent().build();
+    }
+
+    // 소셜 로그인 인증 URL 요청
+    @Operation(summary = "소셜 로그인 인증 URL 요청",
+            description = "provider: kakao | google | naver. 반환된 authorizationUrl로 프론트가 리다이렉트합니다.")
+    @GetMapping("/social/{provider}/authorize")
+    public ResponseEntity<Map<String, String>> socialAuthorize(
+            @PathVariable String provider) {
+        String authorizationUrl = authService.getSocialAuthorizationUrl(provider);
+        return ResponseEntity.ok(Map.of("authorizationUrl", authorizationUrl));
+    }
+
+    // 소셜 로그인 콜백 처리
+    @Operation(summary = "소셜 로그인 콜백 처리",
+            description = "소셜 플랫폼에서 받은 code와 provider를 전달받아 JWT를 발급합니다.")
+    @GetMapping("/social/callback")
+    public ResponseEntity<AuthResponse> socialCallback(
+            @RequestParam String code,           // 카카오가 URL 파라미터로 code를 넘겨줌
+            HttpServletResponse httpRes) {
+        String[] tokens = authService.socialLogin("kakao", code);
+        setRefreshCookie(httpRes, tokens[1]);
+        return ResponseEntity.ok(AuthResponse.of(tokens[0]));
     }
 }
