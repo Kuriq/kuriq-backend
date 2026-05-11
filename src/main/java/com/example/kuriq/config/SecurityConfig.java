@@ -45,8 +45,15 @@ public class SecurityConfig {
                                 "/api/v1/roadmap/generate",
                                 // 비밀번호 재설정할 때 인증 없이 접근 가능하게
                                 "/api/v1/auth/password-reset/request",
-                                "/api/v1/auth/password-reset/confirm"
+                                "/api/v1/auth/password-reset/confirm",
+                                "/api/v1/auth/social/**"
                         ).permitAll()
+
+                        // 소셜 로그인 인증 URL 요청
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/auth/social/**"
+                        ).permitAll()
+
                         // 알림 수신 거부는 PATCH 메서드로 별도 추가
                         .requestMatchers(HttpMethod.PATCH,
                                 "/api/v1/notifications/unsubscribe"
