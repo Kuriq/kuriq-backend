@@ -63,6 +63,16 @@ public class AuthService {
     @Value("${oauth.google.redirect-uri}")
     private String googleRedirectUri;   // 구글 콘솔에 등록한 Redirect URI
 
+    // 네이버
+    @Value("${oauth.naver.client-id}")
+    private String naverClientId;
+
+    @Value("${oauth.naver.client-secret}")
+    private String naverClientSecret;
+
+    @Value("${oauth.naver.redirect-uri}")
+    private String naverRedirectUri;
+
     // 회원가입
     public String signup(SignupRequest req) {
 
@@ -249,6 +259,12 @@ public class AuthService {
                     + "&response_type=code"
                     + "&scope=email%20profile" // 이메일이랑 프로필 정보 요청
                     + "&state=google";  // 콜백에서 provider 구분용
+
+            case "naver" -> "https://nid.naver.com/oauth2.0/authorize"
+                    + "?client_id=" + naverClientId
+                    + "&redirect_uri=" + naverRedirectUri
+                    + "&response_type=code"
+                    + "&state=naver";
             default -> throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
         };
     }
@@ -279,6 +295,17 @@ public class AuthService {
             name = (String) userInfo.get("name");            // 구글 사용자 이름
             if (name == null) name = "구글 사용자";
 
+        } else if (provider == SocialAccount.Provider.NAVER) {
+            String accessToken = getNaverAccessToken(code);
+            Map<String, Object> userInfo = getNaverUserInfo(accessToken);
+            // 네이버 응답 구조: { response: { id, email, name, ... } }
+            Map<String, Object> naverResponse = (Map<String, Object>) userInfo.get("response");
+            if (naverResponse == null) throw new RuntimeException("네이버 사용자 정보 조회 실패");
+            socialId = (String) naverResponse.get("id");
+            email    = (String) naverResponse.get("email");
+            name     = (String) naverResponse.get("name");
+            if (name == null) name = "네이버 사용자";
+
         } else {
             throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + providerStr);
         }
@@ -300,9 +327,11 @@ public class AuthService {
 
             if (user == null) {
                 // 완전 새 유저 생성 (소셜 전용 계정은 password = null)
-                User.AuthProvider authProvider = provider == SocialAccount.Provider.KAKAO
-                        ? User.AuthProvider.KAKAO
-                        : User.AuthProvider.GOOGLE;  // provider에 따라 authProvider 설정
+                User.AuthProvider authProvider = switch (provider) {
+                    case KAKAO  -> User.AuthProvider.KAKAO;
+                    case GOOGLE -> User.AuthProvider.GOOGLE;
+                    case NAVER  -> User.AuthProvider.NAVER;
+                };
 
                 user = User.builder()
                         .email(email)
@@ -367,16 +396,6 @@ public class AuthService {
         return response.getBody();
     }
 
-    // provider 문자열 -> SocialAccount.Provider enum 변환
-    // "kakao" -> KAKAO, 지원하지 않는 값이면 예외 발생
-    private SocialAccount.Provider parseProvider(String provider) {
-        try {
-            return SocialAccount.Provider.valueOf(provider.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
-        }
-    }
-
     // 구글 code -> accessToken 교환
     private String getGoogleAccessToken(String code) {
         HttpHeaders headers = new HttpHeaders();
@@ -413,4 +432,50 @@ public class AuthService {
         }
         return response.getBody();
     }
+
+    private String getNaverAccessToken(String code) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "authorization_code");
+        body.add("client_id", naverClientId);
+        body.add("client_secret", naverClientSecret);
+        body.add("redirect_uri", naverRedirectUri);
+        body.add("code", code);
+        body.add("state", "naver");
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                "https://nid.naver.com/oauth2.0/token", request, Map.class);
+
+        if (response.getBody() == null || !response.getBody().containsKey("access_token")) {
+            throw new RuntimeException("네이버 토큰 발급 실패");
+        }
+        return (String) response.getBody().get("access_token");
+    }
+
+    private Map<String, Object> getNaverUserInfo(String naverAccessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(naverAccessToken);
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "https://openapi.naver.com/v1/nid/me", HttpMethod.GET, request, Map.class);
+
+        if (response.getBody() == null) throw new RuntimeException("네이버 사용자 정보 조회 실패");
+        return response.getBody();
+    }
+
+    // provider 문자열 -> SocialAccount.Provider enum 변환
+    // "kakao" -> KAKAO, 지원하지 않는 값이면 예외 발생
+    private SocialAccount.Provider parseProvider(String provider) {
+        try {
+            return SocialAccount.Provider.valueOf(provider.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
+        }
+    }
+
+
 }
