@@ -42,6 +42,8 @@ public class AuthService {
     private final SocialAccountRepository socialAccountRepository;  // 소셜 계정 연동 정보 저장/조회
     private final RestTemplate restTemplate = new RestTemplate();   // 카카오 API 호출용 HTTP 클라이언트
 
+
+    // 카카오
     @Value("${oauth.kakao.client-id}")
     private String kakaoClientId;      // 카카오 앱 REST API 키 (application.properties에서 주입)
 
@@ -50,6 +52,16 @@ public class AuthService {
 
     @Value("${oauth.kakao.client-secret}")
     private String kakaoClientSecret;   // 카카오 클라이언트 시크릿 (토큰 요청 시 보안 검증용)
+
+    // 구글
+    @Value("${oauth.google.client-id}")
+    private String googleClientId;      // 구글 OAuth 클라이언트 ID
+
+    @Value("${oauth.google.client-secret}")
+    private String googleClientSecret;  // 구글 OAuth 클라이언트 시크릿
+
+    @Value("${oauth.google.redirect-uri}")
+    private String googleRedirectUri;   // 구글 콘솔에 등록한 Redirect URI
 
     // 회원가입
     public String signup(SignupRequest req) {
@@ -228,48 +240,75 @@ public class AuthService {
             case "kakao" -> "https://kauth.kakao.com/oauth/authorize"
                     + "?client_id=" + kakaoClientId          // 카카오 앱 REST API 키
                     + "&redirect_uri=" + kakaoRedirectUri    // 카카오 콘솔에 등록한 Redirect URI
-                    + "&response_type=code";                 // 인증 코드 방식
+                    + "&response_type=code"                 // 인증 코드 방식
+                    + "&state=kakao";  // 콜백에서 provider 구분용
+
+            case "google" -> "https://accounts.google.com/o/oauth2/v2/auth"
+                    + "?client_id=" + googleClientId
+                    + "&redirect_uri=" + googleRedirectUri
+                    + "&response_type=code"
+                    + "&scope=email%20profile" // 이메일이랑 프로필 정보 요청
+                    + "&state=google";  // 콜백에서 provider 구분용
             default -> throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
         };
     }
 
     // 소셜 로그인 메인 로직
     public String[] socialLogin(String providerStr, String code) {
-        SocialAccount.Provider provider = parseProvider(providerStr); // "kakao" 문자열 → KAKAO enum 변환
+        SocialAccount.Provider provider = parseProvider(providerStr); // provider 문자열 → enum 변환
 
-        // 1단계: 카카오 인증 서버에 code를 보내 accessToken 받기
-        String kakaoAccessToken = getKakaoAccessToken(code);
+        // 1단계: provider별로 accessToken 및 사용자 정보 조회
+        String socialId;
+        String email;
+        String name;
 
-        // 2단계: 발급받은 accessToken으로 카카오 사용자 정보 조회
-        Map<String, Object> kakaoUserInfo = getKakaoUserInfo(kakaoAccessToken);
-        String socialId = String.valueOf(kakaoUserInfo.get("id"));  // 카카오 고유 사용자 ID
-        Map<String, Object> kakaoAccount = (Map<String, Object>) kakaoUserInfo.get("kakao_account");
-        String email = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;  // 이메일 미동의 시 null
-        Map<String, Object> profile = kakaoAccount != null ? (Map<String, Object>) kakaoAccount.get("profile") : null;
-        String name = profile != null ? (String) profile.get("nickname") : "카카오 사용자";  // 닉네임 없으면 기본값
+        if (provider == SocialAccount.Provider.KAKAO) {
+            String accessToken = getKakaoAccessToken(code);
+            Map<String, Object> userInfo = getKakaoUserInfo(accessToken);
+            socialId = String.valueOf(userInfo.get("id"));  // 카카오 고유 사용자 ID
+            Map<String, Object> kakaoAccount = (Map<String, Object>) userInfo.get("kakao_account");
+            email = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;  // 이메일 미동의 시 null
+            Map<String, Object> profile = kakaoAccount != null ? (Map<String, Object>) kakaoAccount.get("profile") : null;
+            name = profile != null ? (String) profile.get("nickname") : "카카오 사용자";  // 닉네임 없으면 기본값
 
-        // 3단계: social_accounts 테이블에서 이미 연동된 계정인지 확인
+        } else if (provider == SocialAccount.Provider.GOOGLE) {
+            String accessToken = getGoogleAccessToken(code);
+            Map<String, Object> userInfo = getGoogleUserInfo(accessToken);
+            socialId = String.valueOf(userInfo.get("id"));   // 구글 고유 사용자 ID
+            email = (String) userInfo.get("email");          // 구글은 기본으로 이메일 제공
+            name = (String) userInfo.get("name");            // 구글 사용자 이름
+            if (name == null) name = "구글 사용자";
+
+        } else {
+            throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + providerStr);
+        }
+
+        // 2단계: social_accounts 테이블에서 이미 연동된 계정인지 확인
         SocialAccount existing = socialAccountRepository
                 .findByProviderAndSocialId(provider, socialId)
                 .orElse(null);
 
         String userId;
         if (existing != null) {
-            // 기존 소셜 계정 -> 연결된 userId로 바로 로그인
+            // 기존 소셜 계정 → 연결된 userId로 바로 로그인
             userId = existing.getUserId();
         } else {
-            // 신규 계정 -> 동일 이메일로 가입된 로컬 계정이 있는지 먼저 확인
+            // 신규 계정 → 동일 이메일로 가입된 로컬 계정이 있는지 먼저 확인
             User user = (email != null)
                     ? userRepository.findByEmailAndIsDeletedFalse(email).orElse(null)
                     : null;
 
             if (user == null) {
                 // 완전 새 유저 생성 (소셜 전용 계정은 password = null)
+                User.AuthProvider authProvider = provider == SocialAccount.Provider.KAKAO
+                        ? User.AuthProvider.KAKAO
+                        : User.AuthProvider.GOOGLE;  // provider에 따라 authProvider 설정
+
                 user = User.builder()
                         .email(email)
-                        .password(null)                          // 소셜 전용 계정은 비밀번호 없음
+                        .password(null)                  // 소셜 전용 계정은 비밀번호 없음
                         .name(name)
-                        .authProvider(User.AuthProvider.KAKAO)   // authProvider = KAKAO로 저장
+                        .authProvider(authProvider)
                         .isDeleted(false)
                         .build();
                 userRepository.save(user);
@@ -336,5 +375,42 @@ public class AuthService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
         }
+    }
+
+    // 구글 code -> accessToken 교환
+    private String getGoogleAccessToken(String code) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "authorization_code");    // 인증 코드 방식 고정값
+        body.add("client_id", googleClientId);           // 구글 클라이언트 ID
+        body.add("client_secret", googleClientSecret);   // 구글 클라이언트 시크릿
+        body.add("redirect_uri", googleRedirectUri);     // 콘솔에 등록한 URI와 반드시 동일해야 함
+        body.add("code", code);                          // 프론트에서 받아온 인증 코드
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                "https://oauth2.googleapis.com/token", request, Map.class);
+
+        if (response.getBody() == null || !response.getBody().containsKey("access_token")) {
+            throw new RuntimeException("구글 토큰 발급 실패");
+        }
+        return (String) response.getBody().get("access_token");
+    }
+
+    // 구글 accessToken -> 사용자 정보 조회
+    private Map<String, Object> getGoogleUserInfo(String googleAccessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(googleAccessToken);
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "https://www.googleapis.com/oauth2/v2/userinfo", HttpMethod.GET, request, Map.class);
+
+        if (response.getBody() == null) {
+            throw new RuntimeException("구글 사용자 정보 조회 실패");
+        }
+        return response.getBody();
     }
 }
