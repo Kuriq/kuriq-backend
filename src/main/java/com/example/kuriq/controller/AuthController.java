@@ -1,8 +1,6 @@
 package com.example.kuriq.controller;
 
 import com.example.kuriq.dto.user.request.*;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 
@@ -153,13 +151,12 @@ public class AuthController {
     }
 
     // 소셜 로그인 콜백 처리
-    @Operation(summary = "소셜 로그인 콜백 처리",
-            description = "소셜 플랫폼에서 받은 code와 provider를 전달받아 JWT를 발급합니다.")
     @GetMapping("/social/callback")
     public ResponseEntity<AuthResponse> socialCallback(
-            @RequestParam String code,           // 카카오가 URL 파라미터로 code를 넘겨줌
+            @RequestParam String code,      // 소셜 플랫폼이 URL 파라미터로 code를 넘겨줌
+            @RequestParam(required = false) String state, // 어떤 소셜인지 구분
             HttpServletResponse httpRes) {
-        String[] tokens = authService.socialLogin("kakao", code);
+        String[] tokens = authService.socialLogin(state != null ? state : "kakao", code);
         setRefreshCookie(httpRes, tokens[1]);
         return ResponseEntity.ok(AuthResponse.of(tokens[0]));
     }
