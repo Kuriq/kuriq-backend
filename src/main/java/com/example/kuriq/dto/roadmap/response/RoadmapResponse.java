@@ -179,16 +179,12 @@ public class RoadmapResponse {
              * Entity → DTO 변환 메서드
              *
              * Course 엔티티를 클라이언트 응답용 DTO로 변환한다.
-             *
-             * 사용처:
-             * - RoadmapItemResponse.from()
-             * - 강좌 목록 API 응답
              */
             public static CourseResponse from(Course course) {
                 return CourseResponse.builder()
                         .id(course.getId())
                         .title(course.getTitle())
-                        .platform(course.getPlatform())
+                        .platform(course.getPlatform().name())
                         .institution(course.getInstitution())
                         .category(course.getCategory())
                         .difficulty(course.getDifficulty())

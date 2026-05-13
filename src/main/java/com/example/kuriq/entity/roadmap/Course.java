@@ -54,8 +54,9 @@ public class Course {
     private String id;
 
     // 강좌 제공 플랫폼 (K-MOOC, KOCW 등)
-    @Column(nullable = false, length = 50)
-    private String platform;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Platform platform;
 
     // 원본 플랫폼에서의 강좌 ID
     @Column(nullable = false, length = 255)

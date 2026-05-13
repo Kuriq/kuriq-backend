@@ -43,15 +43,16 @@ public class SecurityConfig {
                                 "/api/v1/auth/logout",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/roadmap/generate",
-                                // 비밀번호 재설정할 때 인증 없이 접근 가능하게
-                                "/api/v1/auth/password-reset/request",
+                                "/api/v1/auth/password-reset/request",  // 비밀번호 재설정할 때 인증 없이 접근 가능하게
                                 "/api/v1/auth/password-reset/confirm",
-                                "/api/v1/auth/social/**"
+                                "/api/v1/auth/social/**",
+                                "/api/v1/analytics/course-click" // 비로그인 클릭도 기록해야 하므로 인증 없이 허용
                         ).permitAll()
 
                         // 소셜 로그인 인증 URL 요청
                         .requestMatchers(HttpMethod.GET,
-                                "/api/v1/auth/social/**"
+                                "/api/v1/auth/social/**",
+                                "/api/v1/analytics/courses/popular"
                         ).permitAll()
 
                         // 알림 수신 거부는 PATCH 메서드로 별도 추가

@@ -256,7 +256,7 @@ public class UserService {
         return histories.stream().map(h -> {
             Course course   = courseMap.get(h.getCourseId());
             String title    = course != null ? course.getTitle()    : "삭제된 강좌";
-            String platform = course != null ? course.getPlatform() : "-";
+            String platform = course != null ? course.getPlatform().name() : "-"; 
             String category = course != null ? course.getCategory() : "-";
             return LearningHistoryResponse.from(h, title, platform, category);
         }).toList();
