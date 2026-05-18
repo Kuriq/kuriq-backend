@@ -131,6 +131,23 @@ public class AiClient {
         private List<String> noteReferences;
     }
 
+    @Getter
+    @Builder
+    public static class OrganizeAiRequest {
+        private String noteContent;
+        private String courseTitle;
+        private String courseCategory;
+        private String userId;
+    }
+
+    @Getter
+    @Setter
+    public static class OrganizeAiResponse {
+        private List<String> keywords;
+        private String structuredSummary;
+        private List<String> suggestions;
+    }
+
     public RoadmapGenerateAiResponse generateRoadmap(RoadmapGenerateAiRequest request) {
         // 1주차 강좌 세팅
         RoadmapGenerateAiResponse.CourseItemDto course1 = new RoadmapGenerateAiResponse.CourseItemDto();
@@ -224,6 +241,16 @@ public class AiClient {
                 .retrieve()
                 .bodyToMono(ChatAiResponse.class)
                 .block(Duration.ofSeconds(10));
+    }
+
+    public OrganizeAiResponse organize(OrganizeAiRequest request) {
+        return aiWebClient.post()
+                .uri("/internal/ai/organize")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(OrganizeAiResponse.class)
+                .block(Duration.ofSeconds(15));
     }
 
     private QuizGenerateAiResponse.OptionDto createOption(String id, String text) {

@@ -59,4 +59,8 @@ public class LearningNote {
     private void preUpdate() {
         lastSavedAt = LocalDateTime.now();
     }
+
+    public void updateContent(String content) {
+        this.content = content;
+    }
 }

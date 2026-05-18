@@ -19,4 +19,6 @@ public interface QuizSessionRepository extends JpaRepository<QuizSession, String
     Optional<QuizSession> findByIdAndUserId(String id, String userId);
 
     boolean existsByIdAndUserId(String id, String userId);
+
+    void deleteByUserIdAndNoteId(String userId, String noteId);
 }
