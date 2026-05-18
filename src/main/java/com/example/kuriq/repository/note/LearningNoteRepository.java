@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface LearningNoteRepository extends JpaRepository<LearningNote, String> {
 
     Optional<LearningNote> findByUserIdAndCourseId(String userId, String courseId);
+
+    boolean existsByUserIdAndCourseId(String userId, String courseId);
 }
