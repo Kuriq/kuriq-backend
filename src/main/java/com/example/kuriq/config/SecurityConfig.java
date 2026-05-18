@@ -59,6 +59,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH,
                                 "/api/v1/notifications/unsubscribe"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/courses/search"
+                        ).permitAll()
                         // Swagger UI 허용
                         .requestMatchers(
                                 "/swagger-ui.html",
