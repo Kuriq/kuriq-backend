@@ -7,5 +7,7 @@ public enum Platform {
     K_MOOC,     // 한국형 온라인 공개강좌 (K-MOOC)
     KOCW,       // 대학 공개강의 서비스 (KOCW)
     LLL_PORTAL, // 온국민평생배움터
-    SEOUL_LLL // 서울시 평생학습포털
+    SEOUL_LLL,  // 서울시 평생학습포털
+    ALLGO,      // 온국민평생배움터 (all.go.kr)
+    KURIQ_TEST  // 테스트용 플랫폼
 }

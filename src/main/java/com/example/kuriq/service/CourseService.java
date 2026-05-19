@@ -3,6 +3,7 @@ package com.example.kuriq.service;
 import com.example.kuriq.dto.course.request.CourseSearchRequest;
 import com.example.kuriq.dto.course.response.CourseSearchResponse;
 import com.example.kuriq.entity.roadmap.Course;
+import com.example.kuriq.entity.roadmap.Platform;
 import com.example.kuriq.repository.roadmap.CourseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -31,7 +32,14 @@ public class CourseService {
                     cb.like(cb.lower(root.get("description")), keyword)
             ));
         }
-        if (request.getPlatform() != null && !request.getPlatform().isBlank()) spec = spec.and(eq("platform", request.getPlatform()));
+        if (request.getPlatform() != null && !request.getPlatform().isBlank()) {
+            try {
+                Platform platform = Platform.valueOf(request.getPlatform().toUpperCase().replace("-", "_"));
+                spec = spec.and(eq("platform", platform));
+            } catch (IllegalArgumentException ignored) {
+                // 유효하지 않은 플랫폼 값은 무시
+            }
+        }
         if (request.getDifficulty() != null && !request.getDifficulty().isBlank()) spec = spec.and(eq("difficulty", request.getDifficulty()));
         if (request.getCategory() != null && !request.getCategory().isBlank()) spec = spec.and(eq("category", request.getCategory()));
         if (request.getHasCertificate() != null) spec = spec.and(eq("hasCertificate", request.getHasCertificate()));

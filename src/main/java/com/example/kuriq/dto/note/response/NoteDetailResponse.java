@@ -42,7 +42,7 @@ public class NoteDetailResponse {
                 .noteId(note.getId())
                 .courseId(note.getCourse().getId())
                 .courseTitle(note.getCourse().getTitle())
-                .platform(note.getCourse().getPlatform())
+                .platform(note.getCourse().getPlatform() != null ? note.getCourse().getPlatform().name() : null)
                 .content(note.getContent())
                 .characterCount(note.getContent().length())
                 .lastSavedAt(note.getLastSavedAt().atZone(ZoneId.of("Asia/Seoul")).toOffsetDateTime())

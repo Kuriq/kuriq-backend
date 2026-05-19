@@ -1,6 +1,7 @@
 package com.example.kuriq.config;
 
 import com.example.kuriq.entity.roadmap.Course;
+import com.example.kuriq.entity.roadmap.Platform;
 import com.example.kuriq.repository.roadmap.CourseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
@@ -20,7 +21,7 @@ public class TestCourseDataInitializer {
     @Bean
     public CommandLineRunner seedTestCourse() {
         return args -> {
-            String platform = "kuriq-test";
+            Platform platform = Platform.KURIQ_TEST;
             String platformCourseId = "test-python-001";
 
             if (courseRepository.existsById(TEST_COURSE_ID)

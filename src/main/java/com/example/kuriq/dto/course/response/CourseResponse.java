@@ -24,7 +24,7 @@ public class CourseResponse {
         return CourseResponse.builder()
                 .id(course.getId())
                 .title(course.getTitle())
-                .platform(course.getPlatform())
+                .platform(course.getPlatform() != null ? course.getPlatform().name() : null)
                 .institution(course.getInstitution())
                 .category(course.getCategory())
                 .difficulty(course.getDifficulty())

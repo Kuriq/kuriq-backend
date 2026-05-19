@@ -73,7 +73,7 @@ public class DashboardService {
                             .itemId(item.getId())
                             .courseId(course.getId())
                             .title(course.getTitle())
-                            .platform(course.getPlatform())
+                            .platform(course.getPlatform() != null ? course.getPlatform().name() : null)
                             .difficulty(course.getDifficulty())
                             .estimatedHours(course.getEstimatedHours() != null ? course.getEstimatedHours() : BigDecimal.ZERO)
                             .isCompleted(Boolean.TRUE.equals(item.getIsCompleted()))
@@ -84,7 +84,7 @@ public class DashboardService {
                             .hasNote(notedCourseIds.contains(course.getId()))
                             .build();
                 })
-                .toList();
+                .collect(Collectors.toList());
 
         // 통계 계산
         int totalCourses = items.size();
