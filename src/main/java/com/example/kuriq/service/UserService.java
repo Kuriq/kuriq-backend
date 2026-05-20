@@ -17,7 +17,6 @@ import com.example.kuriq.repository.notification.UnsubscribeTokenRepository;
 import com.example.kuriq.repository.roadmap.CourseRepository;
 import com.example.kuriq.repository.roadmap.LearningHistoryRepository;
 import com.example.kuriq.repository.roadmap.RoadmapRepository;
-import com.example.kuriq.repository.user.RefreshTokenRepository;
 import com.example.kuriq.repository.user.SocialAccountRepository;
 import com.example.kuriq.repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -42,7 +41,6 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final SocialAccountRepository socialAccountRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final NotificationSettingRepository notificationSettingRepository;
     private final UnsubscribeTokenRepository unsubscribeTokenRepository;
@@ -89,7 +87,6 @@ public class UserService {
             }
         }
         user.softDelete();
-        refreshTokenRepository.revokeAllByUserId(userId);
     }
 
     // 알림 설정 조회
