@@ -8,6 +8,7 @@ import com.example.kuriq.repository.notification.NotificationSettingRepository;
 import com.example.kuriq.repository.user.*;
 import com.example.kuriq.security.JwtProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.*;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.Map;
@@ -32,7 +34,7 @@ import org.springframework.web.client.RestTemplate;
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
+    private final StringRedisTemplate redisTemplate; // Redis 조작 도구 (RefreshTokenRepository 대체)
     private final LoginAttemptRepository loginAttemptRepository;
     private final JwtProvider jwtProvider;
     private final PasswordEncoder passwordEncoder;
@@ -151,13 +153,18 @@ public class AuthService {
 
     // Refresh Token으로 토큰 재발급
     public String[] refresh(String rawToken) {
-        RefreshToken refreshToken = refreshTokenRepository
-                .findByTokenHashAndIsRevokedFalse(sha256(rawToken))
-                .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 토큰입니다. 다시 로그인해 주세요."));
+        String key = "refresh:" + sha256(rawToken);
 
-        refreshToken.revoke();
+        // Redis에서 userId 조회 (없으면 만료됐거나 로그아웃된 토큰)
+        String userId = redisTemplate.opsForValue().get(key);
+        if (userId == null) {
+            throw new IllegalArgumentException("유효하지 않은 토큰입니다. 다시 로그인해 주세요.");
+        }
 
-        User user = userRepository.findById(refreshToken.getUserId())
+        // 사용된 토큰은 즉시 삭제 (재사용 방지)
+        redisTemplate.delete(key);
+
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
         String newAccessToken = jwtProvider.generateAccessToken(user.getId());
@@ -170,19 +177,17 @@ public class AuthService {
 
     // 로그아웃
     public void logout(String rawToken) {
-        refreshTokenRepository
-                .findByTokenHashAndIsRevokedFalse(sha256(rawToken))
-                .ifPresent(RefreshToken::revoke);
+        String key = "refresh:" + sha256(rawToken);
+        redisTemplate.delete(key); // 키 삭제 => 토큰 무효화
     }
 
-    // Refresh Token 원문을 해시로 바꿔 DB에 저장
+    // Refresh Token을 해시로 변환 후 Redis에 저장
     private void saveRefreshToken(String userId, String rawToken) {
-        LocalDateTime expiresAt = LocalDateTime.now()
-                .plusSeconds(jwtProvider.getRefreshTokenExpiryMs() / 1000);
+        String key = "refresh:" + sha256(rawToken);
+        long ttlSeconds = jwtProvider.getRefreshTokenExpiryMs() / 1000; // ms → 초 변환
 
-        refreshTokenRepository.save(
-                RefreshToken.create(userId, sha256(rawToken), expiresAt)
-        );
+        // 명령어: SET key userId EX ttlSeconds (TTL 지나면 Redis가 자동 삭제)
+        redisTemplate.opsForValue().set(key, userId, Duration.ofSeconds(ttlSeconds));
     }
 
     // SHA-256 해시 변환

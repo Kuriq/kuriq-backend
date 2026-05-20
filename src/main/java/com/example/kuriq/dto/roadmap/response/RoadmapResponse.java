@@ -12,20 +12,9 @@ import java.util.List;
 /**
  * 로드맵 상세 응답 DTO.
  *
- * API:
- * - GET /api/v1/roadmap/{roadmapId}
- *
- * 역할:
  * - 하나의 로드맵에 대한 전체 학습 구조를 계층 형태로 반환
  * - 프론트에서 대시보드(주차별 학습 계획 + 진행률)를 바로 렌더링할 수 있도록 설계
  *
- * 구조:
- * RoadmapResponse
- *   └── List<WeekResponse> (주차 단위 — RoadmapWeek 기반)
- *         └── List<RoadmapItemResponse> (강좌 단위 — RoadmapItem 기반)
- *               └── CourseResponse (강좌 상세 정보)
- *
- * 특징:
  * - 계획(Week, Item) + 상태(progress, completed) + 메타데이터를 함께 제공
  * - 추가 API 호출 없이 화면 구성 가능 (API 최적화)
  *
