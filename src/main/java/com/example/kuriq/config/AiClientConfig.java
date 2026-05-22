@@ -20,9 +20,9 @@ public class AiClientConfig {
     public WebClient aiWebClient(@Value("${ai.service.base-url:http://ai-service:8000}") String baseUrl,
                                  @Value("${internal.api-key:${ai.service.internal-key:dev-internal-key}}") String internalKey) {
         HttpClient httpClient = HttpClient.create()
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-                .responseTimeout(Duration.ofSeconds(10))
-                .doOnConnected(conn -> conn.addHandlerLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS)));
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
+                .responseTimeout(Duration.ofSeconds(60))
+                .doOnConnected(conn -> conn.addHandlerLast(new ReadTimeoutHandler(60, TimeUnit.SECONDS)));
 
         return WebClient.builder()
                 .baseUrl(baseUrl)
