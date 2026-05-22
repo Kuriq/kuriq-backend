@@ -46,15 +46,96 @@ public class RoadmapService {
                         .build());
 
         // AI 응답 courseId → 강좌 조회
+        // AI 가 반환하는 courseId 는 "K-MOOC_19921" 형식 (platform_platformCourseId)
         List<String> courseIds = ai.getWeeks().stream()
                 .flatMap(w -> w.getCourses().stream())
                 .map(AiClient.RoadmapGenerateAiResponse.CourseItemDto::getCourseId)
                 .distinct()
                 .collect(Collectors.toList());
 
-        Map<String, Course> courseMap = courseRepository.findAllById(courseIds)
-                .stream()
-                .collect(Collectors.toMap(Course::getId, c -> c));
+        log.info("[RoadmapService] AI 가 반환한 courseId 목록: {}", courseIds);
+
+        // courseId 를 platform + platformCourseId 로 분리하여 강좌 조회
+        Map<String, Course> courseMap = new java.util.HashMap<>();
+        List<String> missingIds = new java.util.ArrayList<>();
+        
+        for (String courseId : courseIds) {
+            String[] parts = courseId.split("_", 2);
+            if (parts.length != 2) {
+                log.warn("[RoadmapService] 잘못된 courseId 형식: {}", courseId);
+                continue;
+            }
+            String platformStr = parts[0];
+            String platformCourseId = parts[1];
+            
+            try {
+                Platform platform = Platform.valueOf(platformStr.replace("-", "_"));
+                courseRepository.findByPlatformAndPlatformCourseId(platform, platformCourseId)
+                        .ifPresent(course -> courseMap.put(courseId, course));
+            } catch (IllegalArgumentException e) {
+                log.warn("[RoadmapService] 잘못된 platform: {}", platformStr);
+            }
+            
+            // 없는 강좌는 목록에 추가
+            if (!courseMap.containsKey(courseId)) {
+                missingIds.add(courseId);
+            }
+        }
+
+        log.info("[RoadmapService] DB 에서 찾은 강좌 수: {}/{}", courseMap.size(), courseIds.size());
+        
+        // 없는 강좌는 chromaDB 에서 메타데이터 조회하여 DB 에 저장
+        if (!missingIds.isEmpty()) {
+            log.warn("[RoadmapService] DB 에 없는 courseId: {}", missingIds);
+            log.info("[RoadmapService] chromaDB 에서 메타데이터 조회 시작...");
+            
+            AiClient.CourseMetadataResponse metadataResponse = aiClient.getCourseMetadata(missingIds);
+            if (metadataResponse != null && metadataResponse.getCourses() != null) {
+                for (AiClient.CourseMetadataResponse.CourseMetadataDto dto : metadataResponse.getCourses()) {
+                    // chromaDB 데이터로 Course 객체 생성 (ID 는 DB 에서 자동 생성)
+                    Course chromaCourse = Course.builder()
+                            .title(dto.getTitle())
+                            .platform(parsePlatform(dto.getPlatform()))
+                            .platformCourseId(extractPlatformCourseId(dto.getCourseId()))
+                            .institution(dto.getInstitution())
+                            .category(dto.getCategory())
+                            .difficulty(dto.getDifficulty())
+                            .durationWeeks(dto.getDurationWeeks() != null ? dto.getDurationWeeks() : 0)
+                            .estimatedHours(dto.getEstimatedHours() != null ? java.math.BigDecimal.valueOf(dto.getEstimatedHours()) : java.math.BigDecimal.ZERO)
+                            .hasCertificate(dto.getHasCertificate() != null ? dto.getHasCertificate() : false)
+                            .url(dto.getUrl() != null && !dto.getUrl().isEmpty() ? dto.getUrl() : "#")
+                            .isActive(true)
+                            .build();
+                    
+                    // DB 에 저장 (중복이면 기존 것 사용)
+                    try {
+                        courseRepository.save(chromaCourse);
+                        // 저장 후 생성된 ID 로 courseMap 업데이트
+                        courseMap.put(dto.getCourseId(), chromaCourse);
+                        log.info("[RoadmapService] Course 저장 완료: {} (UUID: {})", dto.getCourseId(), chromaCourse.getId());
+                    } catch (Exception e) {
+                        log.warn("[RoadmapService] Course 저장 실패 (중복), 기존 강좌 조회: {}", dto.getCourseId());
+                        // 이미 있으면 다시 조회
+                        courseRepository.findByPlatformAndPlatformCourseId(chromaCourse.getPlatform(), chromaCourse.getPlatformCourseId())
+                                .ifPresentOrElse(
+                                        existing -> {
+                                            courseMap.put(dto.getCourseId(), existing);
+                                            log.info("[RoadmapService] 기존 강좌 사용: {} (UUID: {})", dto.getCourseId(), existing.getId());
+                                        },
+                                        () -> log.error("[RoadmapService] 강좌를 찾을 수 없음: {}", dto.getCourseId())
+                                );
+                    }
+                }
+                log.info("[RoadmapService] chromaDB 에서 {}개 강좌 메타데이터 조회 및 저장 완료", metadataResponse.getCourses().size());
+            }
+        }
+        
+        // 최종적으로 모든 courseId 가 courseMap 에 있는지 확인
+        long missingCount = courseIds.stream().filter(id -> !courseMap.containsKey(id)).count();
+        if (missingCount > 0) {
+            log.error("[RoadmapService] {}개의 강좌를 찾지 못함. 로드맵 생성을 계속할 수 없습니다.", missingCount);
+            throw new IllegalStateException("강좌 정보를 찾을 수 없습니다.");
+        }
 
         int totalCourses = ai.getWeeks().stream()
                 .mapToInt(w -> w.getCourses().size())
@@ -196,6 +277,26 @@ public class RoadmapService {
             throw new RuntimeException("접근 권한이 없습니다");
         }
         return item;
+    }
+
+    private Platform parsePlatform(String platformStr) {
+        if (platformStr == null || platformStr.isBlank()) {
+            return Platform.K_MOOC;  // 기본값
+        }
+        try {
+            return Platform.valueOf(platformStr.replace("-", "_").toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("[RoadmapService] 잘못된 platform: {}, 기본값 사용", platformStr);
+            return Platform.K_MOOC;
+        }
+    }
+
+    private String extractPlatformCourseId(String courseId) {
+        if (courseId == null || !courseId.contains("_")) {
+            return courseId;
+        }
+        // "K-MOOC_19921" → "19921"
+        return courseId.substring(courseId.indexOf("_") + 1);
     }
 
     /******************************************************************************/

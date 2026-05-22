@@ -26,6 +26,8 @@ public class AiClient {
 
     @Getter
     @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class RoadmapGenerateAiResponse {
         private String goal;
         private int totalWeeks;
@@ -34,6 +36,8 @@ public class AiClient {
 
         @Getter
         @Setter
+        @NoArgsConstructor
+        @AllArgsConstructor
         public static class WeekDto {
             private int weekNumber;
             private String title;
@@ -44,6 +48,8 @@ public class AiClient {
 
         @Getter
         @Setter
+        @NoArgsConstructor
+        @AllArgsConstructor
         public static class CourseItemDto {
             private String courseId;
             private int orderInWeek;
@@ -148,57 +154,47 @@ public class AiClient {
         private List<String> suggestions;
     }
 
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CourseMetadataRequest {
+        private List<String> courseIds;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CourseMetadataResponse {
+        private List<CourseMetadataDto> courses;
+
+        @Getter
+        @Setter
+        @NoArgsConstructor
+        @AllArgsConstructor
+        public static class CourseMetadataDto {
+            private String courseId;
+            private String title;
+            private String platform;
+            private String institution;
+            private String category;
+            private String difficulty;
+            private Integer durationWeeks;
+            private Double estimatedHours;
+            private Boolean hasCertificate;
+            private String url;
+        }
+    }
+
     public RoadmapGenerateAiResponse generateRoadmap(RoadmapGenerateAiRequest request) {
-        // 1주차: 파이썬 기초
-        RoadmapGenerateAiResponse.CourseItemDto course1 = new RoadmapGenerateAiResponse.CourseItemDto();
-        course1.setCourseId("8355b4f3-ccab-4e89-99c7-109257a89de5"); // 모두를 위한 파이썬
-        course1.setOrderInWeek(1);
-
-        RoadmapGenerateAiResponse.CourseItemDto course2 = new RoadmapGenerateAiResponse.CourseItemDto();
-        course2.setCourseId("2c7e3c04-8df4-4664-b656-8a165d3cef55"); // 파이썬으로 시작하는 프로그래밍
-        course2.setOrderInWeek(2);
-
-        RoadmapGenerateAiResponse.WeekDto week1 = new RoadmapGenerateAiResponse.WeekDto();
-        week1.setWeekNumber(1);
-        week1.setTitle("파이썬 기초 다지기");
-        week1.setDescription("파이썬 문법을 익히며 프로그래밍 사고를 시작합니다");
-        week1.setTotalHours(5.0);
-        week1.setCourses(List.of(course1, course2));
-
-        // 2주차: 데이터 다루기
-        RoadmapGenerateAiResponse.CourseItemDto course3 = new RoadmapGenerateAiResponse.CourseItemDto();
-        course3.setCourseId("6d52dfea-fe41-466a-90a8-c0e11c83c8b7"); // 데이터 과학을 위한 파이썬 입문
-        course3.setOrderInWeek(1);
-
-        RoadmapGenerateAiResponse.CourseItemDto course4 = new RoadmapGenerateAiResponse.CourseItemDto();
-        course4.setCourseId("95f1d2e9-b32b-4738-a721-ab638b6cd7bb"); // Pandas 기초와 데이터 전처리
-        course4.setOrderInWeek(2);
-
-        RoadmapGenerateAiResponse.WeekDto week2 = new RoadmapGenerateAiResponse.WeekDto();
-        week2.setWeekNumber(2);
-        week2.setTitle("데이터 다루기 기본");
-        week2.setDescription("데이터 과학의 기초 개념과 전처리 방법을 학습합니다");
-        week2.setTotalHours(5.0);
-        week2.setCourses(List.of(course3, course4));
-
-        // 3주차: 데이터 시각화
-        RoadmapGenerateAiResponse.CourseItemDto course5 = new RoadmapGenerateAiResponse.CourseItemDto();
-        course5.setCourseId("cb792ff5-0d43-4866-807f-cb02d8b76f6a"); // Python으로 배우는 데이터 시각화
-        course5.setOrderInWeek(1);
-
-        RoadmapGenerateAiResponse.WeekDto week3 = new RoadmapGenerateAiResponse.WeekDto();
-        week3.setWeekNumber(3);
-        week3.setTitle("데이터 시각화 기초");
-        week3.setDescription("시각화 도구를 활용해 데이터를 이해하기 쉽게 표현합니다");
-        week3.setTotalHours(5.0);
-        week3.setCourses(List.of(course5));
-
-        RoadmapGenerateAiResponse response = new RoadmapGenerateAiResponse();
-        response.setGoal("파이썬 기초부터 데이터 분석까지 학습");
-        response.setTotalWeeks(3);
-        response.setWeeklyHours(5);
-        response.setWeeks(List.of(week1, week2, week3));
-        return response;
+        return aiWebClient.post()
+                .uri("/internal/ai/roadmap/generate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(RoadmapGenerateAiResponse.class)
+                .block(Duration.ofSeconds(60));
     }
 
     public QuizGenerateAiResponse generateQuiz(QuizGenerateAiRequest request) {
@@ -271,6 +267,19 @@ public class AiClient {
                 .retrieve()
                 .bodyToMono(OrganizeAiResponse.class)
                 .block(Duration.ofSeconds(15));
+    }
+
+    public CourseMetadataResponse getCourseMetadata(List<String> courseIds) {
+        CourseMetadataRequest request = new CourseMetadataRequest();
+        request.setCourseIds(courseIds);
+        
+        return aiWebClient.post()
+                .uri("/internal/ai/courses/metadata")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(CourseMetadataResponse.class)
+                .block(Duration.ofSeconds(10));
     }
 
     private QuizGenerateAiResponse.OptionDto createOption(String id, String text) {
