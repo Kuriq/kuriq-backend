@@ -56,12 +56,24 @@ public class AiClient {
         }
     }
 
-    // AI 서버 연동 전 임시 응답
+    // AI 서버 연동용
     @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
     @Builder
     public static class QuizGenerateAiRequest {
-        private String noteId;
-        private List<String> excludeSessionIds;
+        @com.fasterxml.jackson.annotation.JsonProperty("noteContent")
+        private String noteContent;
+        @com.fasterxml.jackson.annotation.JsonProperty("courseTitle")
+        private String courseTitle;
+        @com.fasterxml.jackson.annotation.JsonProperty("courseDifficulty")
+        private String courseDifficulty;
+        @com.fasterxml.jackson.annotation.JsonProperty("excludeQuestions")
+        private List<String> excludeQuestions;
+        @com.fasterxml.jackson.annotation.JsonProperty("questionCount")
+        private Integer questionCount;
+        @com.fasterxml.jackson.annotation.JsonProperty("userId")
         private String userId;
     }
 
@@ -138,11 +150,18 @@ public class AiClient {
     }
 
     @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
     @Builder
     public static class OrganizeAiRequest {
+        @com.fasterxml.jackson.annotation.JsonProperty("noteContent")
         private String noteContent;
+        @com.fasterxml.jackson.annotation.JsonProperty("courseTitle")
         private String courseTitle;
+        @com.fasterxml.jackson.annotation.JsonProperty("courseCategory")
         private String courseCategory;
+        @com.fasterxml.jackson.annotation.JsonProperty("userId")
         private String userId;
     }
 
@@ -198,45 +217,13 @@ public class AiClient {
     }
 
     public QuizGenerateAiResponse generateQuiz(QuizGenerateAiRequest request) {
-        QuizGenerateAiResponse response = new QuizGenerateAiResponse();
-        response.setCourseId(UUID.nameUUIDFromBytes(("quiz-course:" + request.getNoteId()).getBytes(StandardCharsets.UTF_8)).toString());
-
-        QuizGenerateAiResponse.QuestionDto q1 = new QuizGenerateAiResponse.QuestionDto();
-        q1.setQuestionId(UUID.nameUUIDFromBytes((request.getNoteId() + ":q1").getBytes(StandardCharsets.UTF_8)).toString());
-        q1.setType("MULTIPLE_CHOICE");
-        q1.setQuestion("노트에서 정리한 내용 중, 파이썬에서 변수를 생성할 때 필요한 것은?");
-        q1.setOptions(List.of(
-                createOption("A", "타입 선언 후 값 할당"),
-                createOption("B", "값 할당만으로 생성"),
-                createOption("C", "var 키워드 사용"),
-                createOption("D", "new 키워드 사용")
-        ));
-        q1.setCorrectAnswer("B");
-        q1.setExplanation("파이썬은 타입 선언 없이 값 할당만으로 변수를 만들 수 있습니다.");
-        q1.setNoteReference("변수의 선언과 할당");
-        q1.setWeakTopic("변수 생성 방식");
-
-        QuizGenerateAiResponse.QuestionDto q2 = new QuizGenerateAiResponse.QuestionDto();
-        q2.setQuestionId(UUID.nameUUIDFromBytes((request.getNoteId() + ":q2").getBytes(StandardCharsets.UTF_8)).toString());
-        q2.setType("TRUE_FALSE");
-        q2.setQuestion("파이썬의 인덱스는 1부터 시작한다.");
-        q2.setCorrectAnswer("false");
-        q2.setExplanation("파이썬의 인덱스는 0부터 시작합니다.");
-        q2.setNoteReference("리스트 인덱스");
-        q2.setWeakTopic("인덱스 개념");
-
-        QuizGenerateAiResponse.QuestionDto q3 = new QuizGenerateAiResponse.QuestionDto();
-        q3.setQuestionId(UUID.nameUUIDFromBytes((request.getNoteId() + ":q3").getBytes(StandardCharsets.UTF_8)).toString());
-        q3.setType("SHORT_ANSWER");
-        q3.setQuestion("파이썬에서 여러 값을 순서대로 저장하면서 수정도 가능한 자료형은?");
-        q3.setCorrectAnswer("리스트");
-        q3.setExplanation("여러 값을 순서대로 저장하고 수정 가능한 대표 자료형은 리스트입니다.");
-        q3.setNoteReference("자료형 개요");
-        q3.setWeakTopic("자료형 명칭");
-        q3.setAcceptableKeywords(List.of("리스트", "list"));
-
-        response.setQuestions(List.of(q1, q2, q3));
-        return response;
+        return aiWebClient.post()
+                .uri("/internal/ai/quiz/generate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(QuizGenerateAiResponse.class)
+                .block(Duration.ofSeconds(30));
     }
 
     public QuizGradeAiResponse gradeShortAnswer(QuizGradeAiRequest request) {
@@ -260,13 +247,63 @@ public class AiClient {
     }
 
     public OrganizeAiResponse organize(OrganizeAiRequest request) {
+        // JSON 수동 생성 (Lombok 직렬화 문제 우회)
+        String jsonBody = String.format(
+            "{\"noteContent\":%s,\"courseTitle\":%s,\"courseCategory\":%s,\"userId\":%s}",
+            toJsonString(request.getNoteContent()),
+            toJsonString(request.getCourseTitle()),
+            toJsonString(request.getCourseCategory()),
+            toJsonString(request.getUserId())
+        );
+        
+        System.out.println("=== Sending JSON: " + jsonBody.substring(0, Math.min(500, jsonBody.length())));
+        System.out.println("=== JSON Length: " + jsonBody.length());
+        
+        // 디버그 엔드포인트로 먼저 테스트
+        try {
+            var debugResponse = aiWebClient.post()
+                    .uri("/internal/ai/note/organize/debug")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(jsonBody)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block(Duration.ofSeconds(5));
+            System.out.println("=== Debug Response: " + debugResponse);
+        } catch (Exception debugErr) {
+            System.out.println("=== Debug Error: " + debugErr.getMessage());
+        }
+        
         return aiWebClient.post()
-                .uri("/internal/ai/organize")
+                .uri("/internal/ai/note/organize")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(request)
+                .bodyValue(jsonBody)
                 .retrieve()
                 .bodyToMono(OrganizeAiResponse.class)
                 .block(Duration.ofSeconds(15));
+    }
+    
+    private String toJsonString(String s) {
+        if (s == null) return "null";
+        StringBuilder sb = new StringBuilder("\"");
+        for (char c : s.toCharArray()) {
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                case '\b': sb.append("\\b"); break;
+                case '\f': sb.append("\\f"); break;
+                default:
+                    if (c < ' ') {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        sb.append("\"");
+        return sb.toString();
     }
 
     public CourseMetadataResponse getCourseMetadata(List<String> courseIds) {

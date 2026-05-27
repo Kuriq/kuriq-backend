@@ -49,7 +49,20 @@ public class QuizService {
             throw new ApiException("FORBIDDEN", "이 노트에 접근할 수 없습니다.", HttpStatus.FORBIDDEN);
         }
 
-        AiClient.QuizGenerateAiResponse aiResponse = buildQuizResponseFromNote(note);
+        // AI 서버에서 퀴즈 생성
+        AiClient.QuizGenerateAiRequest aiRequest = AiClient.QuizGenerateAiRequest.builder()
+                .noteContent(note.getContent())
+                .courseTitle(note.getCourse().getTitle())
+                .courseDifficulty("초급")
+                .excludeQuestions(request.getExcludeSessionIds())
+                .questionCount(5)
+                .userId(userId)
+                .build();
+        
+        System.out.println("=== Sending Quiz AI Request: noteContent length=" + (note.getContent() != null ? note.getContent().length() : 0));
+        
+        AiClient.QuizGenerateAiResponse aiResponse = aiClient.generateQuiz(aiRequest);
+        System.out.println("=== Received Quiz AI Response: " + (aiResponse != null ? aiResponse.getQuestions().size() + " questions" : "null"));
         validateAiResponse(aiResponse);
 
         QuizSession session = QuizSession.builder()
@@ -191,118 +204,7 @@ public class QuizService {
         return response;
     }
 
-    private AiClient.QuizGenerateAiResponse buildQuizResponseFromNote(com.example.kuriq.entity.note.LearningNote note) {
-        AiClient.QuizGenerateAiResponse response = new AiClient.QuizGenerateAiResponse();
-        response.setCourseId(note.getCourse().getId());
-
-        String content = note.getContent() == null ? "" : note.getContent().trim();
-        String topic = extractTopic(content, note.getCourse().getTitle());
-        String detail = extractDetail(content, topic);
-        String noteReference = buildNoteReference(content);
-
-        AiClient.QuizGenerateAiResponse.QuestionDto q1 = new AiClient.QuizGenerateAiResponse.QuestionDto();
-        q1.setQuestionId(java.util.UUID.nameUUIDFromBytes((note.getId() + ":q1").getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
-        q1.setType("MULTIPLE_CHOICE");
-        q1.setQuestion("노트에서 정리한 '" + topic + "'의 설명으로 가장 알맞은 것은?");
-        q1.setOptions(List.of(
-                createOption("A", detail),
-                createOption("B", "노트에 적히지 않은 설명"),
-                createOption("C", "정반대의 내용"),
-                createOption("D", "문맥과 무관한 설명")
-        ));
-        q1.setCorrectAnswer("A");
-        q1.setExplanation("노트에 '" + topic + "'를 " + detail + "로 정리하셨습니다.");
-        q1.setNoteReference(noteReference);
-        q1.setWeakTopic(topic);
-
-        AiClient.QuizGenerateAiResponse.QuestionDto q2 = new AiClient.QuizGenerateAiResponse.QuestionDto();
-        q2.setQuestionId(java.util.UUID.nameUUIDFromBytes((note.getId() + ":q2").getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
-        q2.setType("TRUE_FALSE");
-        q2.setQuestion("노트에는 '" + topic + "'에 대해 '" + detail + "'라고 정리되어 있다.");
-        q2.setCorrectAnswer("true");
-        q2.setExplanation("노트의 핵심 설명과 일치합니다.");
-        q2.setNoteReference(noteReference);
-        q2.setWeakTopic(topic);
-
-        AiClient.QuizGenerateAiResponse.QuestionDto q3 = new AiClient.QuizGenerateAiResponse.QuestionDto();
-        q3.setQuestionId(java.util.UUID.nameUUIDFromBytes((note.getId() + ":q3").getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
-        q3.setType("SHORT_ANSWER");
-        q3.setQuestion("노트에서 핵심 개념으로 언급된 용어는?");
-        q3.setCorrectAnswer(topic);
-        q3.setExplanation("노트의 핵심 개념을 정확히 기억하면 됩니다.");
-        q3.setNoteReference(noteReference);
-        q3.setWeakTopic(topic);
-        q3.setAcceptableKeywords(buildAcceptableKeywords(topic, content));
-
-        response.setQuestions(List.of(q1, q2, q3));
-        return response;
-    }
-
-    private String extractTopic(String content, String courseTitle) {
-        if (content == null || content.isBlank()) {
-            return courseTitle == null || courseTitle.isBlank() ? "핵심 개념" : courseTitle;
-        }
-        String firstLine = content.split("[\\n\\r]")[0].trim();
-        int colonIndex = firstLine.indexOf(':');
-        if (colonIndex > 0) {
-            return firstLine.substring(0, colonIndex).trim();
-        }
-        String[] words = firstLine.split("\\s+");
-        if (words.length >= 2) {
-            return words[0] + " " + words[1];
-        }
-        return firstLine.length() > 12 ? firstLine.substring(0, 12).trim() : firstLine;
-    }
-
-    private String extractDetail(String content, String topic) {
-        if (content == null || content.isBlank()) {
-            return topic + "에 대한 설명";
-        }
-        String firstLine = content.split("[\\n\\r]")[0].trim();
-        int colonIndex = firstLine.indexOf(':');
-        if (colonIndex > 0 && colonIndex + 1 < firstLine.length()) {
-            return firstLine.substring(colonIndex + 1).trim();
-        }
-        return firstLine;
-    }
-
-    private String buildNoteReference(String content) {
-        if (content == null || content.isBlank()) {
-            return "노트 내용";
-        }
-        String firstLine = content.split("[\\n\\r]")[0].trim();
-        return firstLine.length() > 120 ? firstLine.substring(0, 120).trim() : firstLine;
-    }
-
-    private List<String> buildAcceptableKeywords(String topic, String content) {
-        java.util.LinkedHashSet<String> keywords = new java.util.LinkedHashSet<>();
-        if (topic != null && !topic.isBlank()) {
-            keywords.add(topic.trim());
-            for (String word : topic.trim().split("\\s+")) {
-                if (!word.isBlank()) keywords.add(word.trim());
-            }
-        }
-        if (content != null && !content.isBlank()) {
-            String normalized = content.replace(':', ' ').replace('-', ' ');
-            for (String token : normalized.split("\\s+")) {
-                String cleaned = token.replaceAll("[\\[\\]\\(\\)\\{\\},。.!?]", "").trim();
-                if (cleaned.length() >= 2) {
-                    keywords.add(cleaned);
-                }
-            }
-        }
-        return List.copyOf(keywords);
-    }
-
-
-    private AiClient.QuizGenerateAiResponse.OptionDto createOption(String id, String text) {
-        AiClient.QuizGenerateAiResponse.OptionDto option = new AiClient.QuizGenerateAiResponse.OptionDto();
-        option.setId(id);
-        option.setText(text);
-        return option;
-    }
-
-        private void validateExcludedSessions(List<String> excludeSessionIds, String userId) {
+    private void validateExcludedSessions(List<String> excludeSessionIds, String userId) {
         if (excludeSessionIds == null || excludeSessionIds.isEmpty()) {
             return;
         }
@@ -315,7 +217,7 @@ public class QuizService {
     }
 
     private void validateAiResponse(AiClient.QuizGenerateAiResponse response) {
-        if (response == null || isBlank(response.getCourseId()) || response.getQuestions() == null || response.getQuestions().isEmpty()) {
+        if (response == null || response.getQuestions() == null || response.getQuestions().isEmpty()) {
             throw new RuntimeException("AI 퀴즈 생성 응답이 올바르지 않습니다");
         }
 

@@ -71,17 +71,28 @@ public class NoteService {
             throw new ApiException("FORBIDDEN", "이 노트에 접근할 수 없습니다.", HttpStatus.FORBIDDEN);
         }
 
+        System.out.println("=== Note ID: " + noteId);
+        System.out.println("=== Note Content Length: " + (note.getContent() != null ? note.getContent().length() : "null"));
+        System.out.println("=== Note Content: " + (note.getContent() != null ? note.getContent().substring(0, Math.min(100, note.getContent().length())) : "null"));
+
+        if (note.getContent() == null || note.getContent().trim().length() < 50) {
+            throw new ApiException("NOTE_CONTENT_TOO_SHORT", "AI 정리는 50 자 이상 작성 후 사용해주세요.", HttpStatus.BAD_REQUEST);
+        }
+
         AiClient.OrganizeAiRequest request = AiClient.OrganizeAiRequest.builder()
                 .noteContent(note.getContent())
                 .courseTitle(note.getCourse().getTitle())
-                .courseCategory(note.getCourse().getCategory() == null ? "기타" : note.getCourse().getCategory())
+                .courseCategory(note.getCourse().getCategory() == null || note.getCourse().getCategory().isBlank() ? "기타" : note.getCourse().getCategory())
                 .userId(userId)
                 .build();
+
+        System.out.println("=== AI Request: " + request);
 
         AiClient.OrganizeAiResponse aiResponse;
         try {
             aiResponse = aiClient.organize(request);
         } catch (Exception e) {
+            System.out.println("=== AI Error: " + e.getMessage());
             throw new ApiException("AI_ORGANIZE_FAILED", "AI 노트 정리에 실패했습니다.", HttpStatus.BAD_GATEWAY);
         }
 
