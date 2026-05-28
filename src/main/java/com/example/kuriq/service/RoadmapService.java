@@ -282,9 +282,10 @@ public class RoadmapService {
             throw new RuntimeException("접근 권한이 없습니다");
         }
         
-        // 전체 완료 체크를 위해 items 명시적으로 로드
+        // 전체 완료 체크를 위해 Roadmap 의 모든 items 명시적으로 로드
         Roadmap roadmap = item.getRoadmap();
-        roadmap.getWeeks().forEach(week -> week.getItems().size());
+        // Roadmap.items 는 @OneToMany(fetch = LAZY) 이므로 초기화 필요
+        roadmapItemRepository.findAllByRoadmapId(roadmap.getId()).size();
         
         return item;
     }
