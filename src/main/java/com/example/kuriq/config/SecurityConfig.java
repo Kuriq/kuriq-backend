@@ -51,7 +51,9 @@ public class SecurityConfig {
                         // 소셜 로그인 인증 URL 요청
                         .requestMatchers(HttpMethod.GET,
                                 "/api/v1/auth/social/**",
-                                "/api/v1/analytics/courses/popular"
+                                "/api/v1/analytics/courses/popular",
+                                "/api/v1/posts",         // 게시판 목록 비로그인 조회
+                                "/api/v1/posts/**"       // 게시판 상세 비로그인 조회
                         ).permitAll()
 
                         // 알림 수신 거부는 PATCH 메서드로 별도 추가
