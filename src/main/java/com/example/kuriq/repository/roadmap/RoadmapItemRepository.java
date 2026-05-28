@@ -15,4 +15,8 @@ public interface RoadmapItemRepository extends JpaRepository<RoadmapItem, String
     // 전체 items 를 로드하기 위한 메서드 추가
     @Query("SELECT ri FROM RoadmapItem ri WHERE ri.roadmap.id = :roadmapId")
     List<RoadmapItem> findAllByRoadmapId(@Param("roadmapId") String roadmapId);
+    
+    // 특정 주차의 미완료 강좌 수 카운트
+    long countByRoadmapIdAndWeekNumberAndIsCompletedFalse(
+            @Param("roadmapId") String roadmapId, @Param("weekNumber") Integer weekNumber);
 }
