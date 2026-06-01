@@ -10,6 +10,7 @@ import com.example.kuriq.repository.post.PostLikeRepository;
 import com.example.kuriq.repository.post.PostRepository;
 import com.example.kuriq.repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,29 +31,37 @@ public class PostService {
 
     // 게시글 목록 조회
     // 최신순 (기본)
-    public List<PostDto.SummaryResponse> getPostsLatest(int page, int size) {
-        List<Post> posts = postRepository.findByIsDeletedFalseOrderByCreatedAtDesc(
+    public PostDto.PageResponse getPostsLatest(int page, int size) {
+        Page<Post> posts = postRepository.findByIsDeletedFalseOrderByCreatedAtDesc(
                 PageRequest.of(page, size));
-        return buildSummaryList(posts);
+        return buildPageResponse(posts);
     }
 
     // 댓글많은순 (같은 댓글 수면 최신순)
-    public List<PostDto.SummaryResponse> getPostsByComment(int page, int size) {
-        List<Post> posts = postRepository.findByIsDeletedFalseOrderByCommentCountDescCreatedAtDesc(
+    public PostDto.PageResponse getPostsByComment(int page, int size) {
+        Page<Post> posts = postRepository.findByIsDeletedFalseOrderByCommentCountDescCreatedAtDesc(
                 PageRequest.of(page, size));
-        return buildSummaryList(posts);
+        return buildPageResponse(posts);
     }
 
-    // 목록 응답 빌드 — 작성자 이름 일괄 조회
-    private List<PostDto.SummaryResponse> buildSummaryList(List<Post> posts) {
-        List<String> userIds = posts.stream().map(Post::getUserId).distinct().toList();
-        Map<String, String> nameMap = userRepository.findAllById(userIds).stream()
-                .collect(Collectors.toMap(User::getId, User::getName));
+// 페이지 응답 빌드
+private PostDto.PageResponse buildPageResponse(Page<Post> posts) {
+    List<String> userIds = posts.getContent().stream().map(Post::getUserId).distinct().toList();
+    Map<String, String> nameMap = userRepository.findAllById(userIds).stream()
+            .collect(Collectors.toMap(User::getId, User::getName));
 
-        return posts.stream()
-                .map(p -> PostDto.SummaryResponse.from(p, nameMap.getOrDefault(p.getUserId(), "알 수 없음")))
-                .toList();
-    }
+    List<PostDto.SummaryResponse> content = posts.getContent().stream()
+            .map(p -> PostDto.SummaryResponse.from(p, nameMap.getOrDefault(p.getUserId(), "알 수 없음")))
+            .toList();
+
+    return PostDto.PageResponse.builder()
+            .content(content)
+            .currentPage(posts.getNumber())
+            .totalPages(posts.getTotalPages())
+            .totalElements(posts.getTotalElements())
+            .hasNext(posts.hasNext())
+            .build();
+}
 
     // 게시글 상세 조회
     @Transactional

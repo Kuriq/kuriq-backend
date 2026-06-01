@@ -12,6 +12,17 @@ import java.util.List;
 
 public class PostDto {
 
+    // 페이지네이션 응답 래퍼
+    @Getter
+    @Builder
+    public static class PageResponse {
+        private List<SummaryResponse> content;
+        private int currentPage;
+        private int totalPages;
+        private long totalElements;
+        private boolean hasNext;
+    }
+
     /* 요청 */
 
     // 게시글 작성 요청

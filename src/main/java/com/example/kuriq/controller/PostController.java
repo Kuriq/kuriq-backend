@@ -25,14 +25,14 @@ public class PostController {
     // 최신순(기본) / 댓글많은순
     @Operation(summary = "게시글 목록 조회")
     @GetMapping
-    public ResponseEntity<List<PostDto.SummaryResponse>> getPosts(
+    public ResponseEntity<PostDto.PageResponse> getPosts(
             @RequestParam(defaultValue = "latest") String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        List<PostDto.SummaryResponse> result = switch (sort) {
+        PostDto.PageResponse result = switch (sort) {
             case "comments" -> postService.getPostsByComment(page, size);
-            default -> postService.getPostsLatest(page, size); // 기본: 최신순
+            default -> postService.getPostsLatest(page, size);
         };
         return ResponseEntity.ok(result);
     }
@@ -106,7 +106,7 @@ public class PostController {
     @PutMapping("/{postId}/comments/{commentId}")
     public ResponseEntity<PostDto.CommentResponse> updateComment(
             @AuthenticationPrincipal String userId,
-            @PathVariable String postId, // URL 구조 유지용
+            @PathVariable String postId,
             @PathVariable String commentId,
             @Valid @RequestBody PostDto.CommentUpdateRequest req) {
         return ResponseEntity.ok(postService.updateComment(userId, commentId, req));
@@ -118,7 +118,7 @@ public class PostController {
     @DeleteMapping("/{postId}/comments/{commentId}")
     public ResponseEntity<Void> deleteComment(
             @AuthenticationPrincipal String userId,
-            @PathVariable String postId, // URL 구조 유지용
+            @PathVariable String postId,
             @PathVariable String commentId) {
         postService.deleteComment(userId, commentId);
         return ResponseEntity.noContent().build();
