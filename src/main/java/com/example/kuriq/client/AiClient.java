@@ -29,6 +29,7 @@ public class AiClient {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class RoadmapGenerateAiResponse {
+        private String title;
         private String goal;
         private int totalWeeks;
         private int weeklyHours;

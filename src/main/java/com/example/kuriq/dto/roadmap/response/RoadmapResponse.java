@@ -30,6 +30,8 @@ public class RoadmapResponse {
 
     private String id;  // 로드맵 id
 
+    private String title;  // 간략화된 로드맵 제목
+
     private String goal;  // 사용자의 학습 목표
 
     private String prompt;  // AI 생성에 사용된 원본 프롬프트
