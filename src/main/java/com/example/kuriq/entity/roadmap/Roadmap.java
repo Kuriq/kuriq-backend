@@ -59,10 +59,6 @@ public class Roadmap {
     @Column(nullable = false, length = 500)
     private String goal;
 
-    // 화면에 표시할 간단한 제목
-    @Column(length = 120)
-    private String title;
-
     //  전체 학습 기간 (주 단위)
     @Column(nullable = false)
     private Integer totalWeeks;
@@ -128,12 +124,11 @@ public class Roadmap {
     }
 
     // 로드맵 생성 메서드
-    public static Roadmap create(String userId, String prompt, String title, String goal,
+    public static Roadmap create(String userId, String prompt, String goal,
                                  int totalWeeks, int weeklyHours, int totalCourses) {
         Roadmap r = new Roadmap();
         r.userId = userId;
         r.prompt = prompt;
-        r.title = title;
         r.goal = goal;
         r.totalWeeks = totalWeeks;
         r.weeklyHours = weeklyHours;
