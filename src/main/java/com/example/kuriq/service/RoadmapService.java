@@ -33,6 +33,7 @@ public class RoadmapService {
     private final NotificationSettingRepository notificationSettingRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final BadgeService badgeService;
     private static final String DASHBOARD_URL = "https://kuriq.com/dashboard";
 
     // 로드맵 생성
@@ -226,8 +227,11 @@ public class RoadmapService {
         }
 
         // 전체 완료 체크
+        boolean roadmapJustCompleted = false;
+
         if (item.getRoadmap().allItemsCompleted()) {
             item.getRoadmap().complete();
+            roadmapJustCompleted = true;
             log.info("로드맵 전체 완료: roadmapId={}", item.getRoadmap().getId());
 
             // 완료 축하 알림 (로드맵 전체 완료 시에만 발송)
@@ -241,6 +245,19 @@ public class RoadmapService {
                         }
                     });
         }
+
+        // 뱃지 체크 — @Async 이므로 현재 트랜잭션과 분리되어 실행됨
+        final boolean finalRoadmapJustCompleted = roadmapJustCompleted;
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronizationAdapter() {
+                    @Override
+                    public void afterCommit() {
+                        badgeService.checkAndAwardOnCourseComplete(userId);
+                        if (finalRoadmapJustCompleted) {
+                            badgeService.checkAndAwardOnRoadmapComplete(userId);
+                        }
+                    }
+                });
 
         return RoadmapResponse.RoadmapItemResponse.from(item);
     }
@@ -299,9 +316,7 @@ public class RoadmapService {
         return courseId.substring(courseId.indexOf("_") + 1);
     }
 
-    /******************************************************************************/
-
-    // 엔티티 → 응답 DTO 변환
+    // 엔티티 -> 응답 DTO 변환
     private RoadmapResponse buildRoadmapResponse(Roadmap roadmap) {
         List<RoadmapItem> items = roadmap.getItems() != null ? roadmap.getItems() : List.of();
         List<RoadmapWeek> weeks = roadmap.getWeeks() != null ? roadmap.getWeeks() : List.of();

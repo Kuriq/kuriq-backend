@@ -28,6 +28,7 @@ public class PostService {
     private final PostCommentRepository postCommentRepository;
     private final PostLikeRepository postLikeRepository;
     private final UserRepository userRepository;
+    private final BadgeService badgeService; // ★ 추가
 
     // 게시글 목록 조회
     // 최신순 (기본)
@@ -44,24 +45,24 @@ public class PostService {
         return buildPageResponse(posts);
     }
 
-// 페이지 응답 빌드
-private PostDto.PageResponse buildPageResponse(Page<Post> posts) {
-    List<String> userIds = posts.getContent().stream().map(Post::getUserId).distinct().toList();
-    Map<String, String> nameMap = userRepository.findAllById(userIds).stream()
-            .collect(Collectors.toMap(User::getId, User::getName));
+    // 페이지 응답 빌드
+    private PostDto.PageResponse buildPageResponse(Page<Post> posts) {
+        List<String> userIds = posts.getContent().stream().map(Post::getUserId).distinct().toList();
+        Map<String, String> nameMap = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, User::getName));
 
-    List<PostDto.SummaryResponse> content = posts.getContent().stream()
-            .map(p -> PostDto.SummaryResponse.from(p, nameMap.getOrDefault(p.getUserId(), "알 수 없음")))
-            .toList();
+        List<PostDto.SummaryResponse> content = posts.getContent().stream()
+                .map(p -> PostDto.SummaryResponse.from(p, nameMap.getOrDefault(p.getUserId(), "알 수 없음")))
+                .toList();
 
-    return PostDto.PageResponse.builder()
-            .content(content)
-            .currentPage(posts.getNumber())
-            .totalPages(posts.getTotalPages())
-            .totalElements(posts.getTotalElements())
-            .hasNext(posts.hasNext())
-            .build();
-}
+        return PostDto.PageResponse.builder()
+                .content(content)
+                .currentPage(posts.getNumber())
+                .totalPages(posts.getTotalPages())
+                .totalElements(posts.getTotalElements())
+                .hasNext(posts.hasNext())
+                .build();
+    }
 
     // 게시글 상세 조회
     @Transactional
@@ -115,6 +116,9 @@ private PostDto.PageResponse buildPageResponse(Page<Post> posts) {
                 .content(req.getContent())
                 .build();
         postRepository.save(post);
+
+        // 첫 게시글 작성 뱃지 체크 (비동기)
+        badgeService.checkAndAwardOnFirstPost(userId);
 
         String authorName = userRepository.findById(userId)
                 .map(User::getName).orElse("알 수 없음");
