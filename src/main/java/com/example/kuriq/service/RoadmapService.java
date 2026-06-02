@@ -227,23 +227,26 @@ public class RoadmapService {
         }
 
         // 전체 완료 체크
-        boolean roadmapJustCompleted = false;
-
-        if (item.getRoadmap().allItemsCompleted()) {
-            item.getRoadmap().complete();
-            roadmapJustCompleted = true;
-            log.info("로드맵 전체 완료: roadmapId={}", item.getRoadmap().getId());
-
-            // 완료 축하 알림 (로드맵 전체 완료 시에만 발송)
-            notificationSettingRepository.findCompletionAlertTarget(userId)
-                    .ifPresent(ns -> {
-                        User user = userRepository.findById(userId).orElse(null);
-                        if (user != null && user.getEmail() != null) {
-                            emailService.sendCompletionEmail(
-                                    user.getEmail(), userId, user.getName(),
-                                    item.getRoadmap().getGoal(), DASHBOARD_URL);
-                        }
-                    });
+boolean roadmapJustCompleted = false;
+try {
+    if (item.getRoadmap().allItemsCompleted()) {
+        item.getRoadmap().complete();
+        roadmapJustCompleted = true;
+        log.info("로드맵 전체 완료: roadmapId={}", item.getRoadmap().getId());
+        // 완료 축하 알림 (로드맵 전체 완료 시에만 발송)
+        notificationSettingRepository.findCompletionAlertTarget(userId)
+                .ifPresent(ns -> {
+                    User user = userRepository.findById(userId).orElse(null);
+                    if (user != null && user.getEmail() != null) {
+                        emailService.sendCompletionEmail(
+                                user.getEmail(), userId, user.getName(),
+                                item.getRoadmap().getGoal(), DASHBOARD_URL);
+                    }
+                });
+    }
+} catch (Exception e) {
+    log.error("로드맵 완료 체크 중 오류: {}", e.getMessage(), e);
+}
         }
 
         // 뱃지 체크 — @Async 이므로 현재 트랜잭션과 분리되어 실행됨
@@ -293,6 +296,12 @@ public class RoadmapService {
         if (!item.getRoadmap().getUserId().equals(userId)) {
             throw new RuntimeException("접근 권한이 없습니다");
         }
+        
+        // 전체 완료 체크를 위해 Roadmap 의 모든 items 명시적으로 로드
+        Roadmap roadmap = item.getRoadmap();
+        // Roadmap.items 는 @OneToMany(fetch = LAZY) 이므로 초기화 필요
+        roadmapItemRepository.findAllByRoadmapId(roadmap.getId()).size();
+        
         return item;
     }
 
