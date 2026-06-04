@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -65,6 +66,16 @@ public class CourseReviewService {
                 .totalElements(reviewPage.getTotalElements())
                 .hasNext(reviewPage.hasNext())
                 .build();
+    }
+
+    public Optional<ReviewDto.ReviewResponse> getMyReview(String userId, String courseId) {
+        String authorName = userRepository.findById(userId).map(User::getName).orElse("알 수 없음");
+
+        return reviewRepository.findByUserIdAndCourseIdAndIsDeletedFalse(userId, courseId)
+                .map(review -> {
+                    boolean likedByMe = reviewLikeRepository.existsByReviewIdAndUserId(review.getId(), userId);
+                    return ReviewDto.ReviewResponse.from(review, authorName, likedByMe);
+                });
     }
 
     // 리뷰 작성

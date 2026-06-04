@@ -38,6 +38,17 @@ public class CourseReviewController {
         return ResponseEntity.ok(reviewService.getReviews(courseId, userId, page, size));
     }
 
+    @Operation(summary = "내 리뷰 조회")
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/api/v1/courses/{courseId}/reviews/me")
+    public ResponseEntity<ReviewDto.ReviewResponse> getMyReview(
+            @AuthenticationPrincipal String userId,
+            @PathVariable String courseId) {
+        return reviewService.getMyReview(userId, courseId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
     // 리뷰 작성 (이수자만)
     @Operation(summary = "리뷰 작성 — 해당 강좌 이수자만 가능")
     @SecurityRequirement(name = "bearerAuth")
