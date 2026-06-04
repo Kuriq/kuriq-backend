@@ -9,6 +9,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,6 +25,7 @@ public class KakaoLocalClient {
     private static final String CAFE_CATEGORY_GROUP_CODE = "CE7";
     private static final String STUDY_CAFE_KEYWORD = "스터디카페";
     private static final int API_MAX_SIZE = 15;
+    private static final int API_MAX_PAGE = 45;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
 
     private final WebClient.Builder webClientBuilder;
@@ -50,10 +52,10 @@ public class KakaoLocalClient {
 
         Map<String, KakaoPlace> deduplicated = new LinkedHashMap<>();
 
-        safeFetchByCategory(effectiveApiKey, lng, lat, radius, Math.min(limit, API_MAX_SIZE))
+        fetchCategoryPages(effectiveApiKey, lng, lat, radius, limit)
                 .forEach(place -> deduplicated.putIfAbsent(place.id(), place));
 
-        safeFetchByKeyword(effectiveApiKey, STUDY_CAFE_KEYWORD, lng, lat, radius, Math.min(limit, API_MAX_SIZE))
+        fetchKeywordPages(effectiveApiKey, STUDY_CAFE_KEYWORD, lng, lat, radius, limit)
                 .forEach(place -> deduplicated.putIfAbsent(place.id(), place));
 
         return deduplicated.values().stream()
@@ -62,7 +64,34 @@ public class KakaoLocalClient {
                 .toList();
     }
 
-    private List<KakaoPlace> fetchByCategory(String apiKey, double lng, double lat, int radius, int size) {
+    private List<KakaoPlace> fetchCategoryPages(String apiKey, double lng, double lat, int radius, int limit) {
+        return fetchPages(page -> safeFetchByCategory(apiKey, lng, lat, radius, API_MAX_SIZE, page), limit);
+    }
+
+    private List<KakaoPlace> fetchKeywordPages(String apiKey, String keyword, double lng, double lat, int radius, int limit) {
+        return fetchPages(page -> safeFetchByKeyword(apiKey, keyword, lng, lat, radius, API_MAX_SIZE, page), limit);
+    }
+
+    private List<KakaoPlace> fetchPages(PageFetcher fetcher, int limit) {
+        List<KakaoPlace> results = new ArrayList<>();
+
+        for (int page = 1; page <= API_MAX_PAGE && results.size() < limit; page++) {
+            KakaoLocalSearchResponse response = fetcher.fetch(page);
+            if (response == null || response.documents() == null || response.documents().isEmpty()) {
+                break;
+            }
+
+            results.addAll(response.documents());
+
+            if (response.meta() == null || Boolean.TRUE.equals(response.meta().is_end())) {
+                break;
+            }
+        }
+
+        return results.stream().limit(limit).toList();
+    }
+
+    private KakaoLocalSearchResponse fetchByCategory(String apiKey, double lng, double lat, int radius, int size, int page) {
         return get(apiKey)
                 .uri(uriBuilder -> uriBuilder
                         .path(SEARCH_BY_CATEGORY_PATH)
@@ -71,16 +100,16 @@ public class KakaoLocalClient {
                         .queryParam("y", lat)
                         .queryParam("radius", radius)
                         .queryParam("size", size)
+                        .queryParam("page", page)
                         .queryParam("sort", "distance")
                         .build())
                 .retrieve()
                 .bodyToMono(KakaoLocalSearchResponse.class)
                 .blockOptional(REQUEST_TIMEOUT)
-                .map(KakaoLocalSearchResponse::documents)
-                .orElseGet(List::of);
+                .orElse(null);
     }
 
-    private List<KakaoPlace> fetchByKeyword(String apiKey, String keyword, double lng, double lat, int radius, int size) {
+    private KakaoLocalSearchResponse fetchByKeyword(String apiKey, String keyword, double lng, double lat, int radius, int size, int page) {
         return get(apiKey)
                 .uri(uriBuilder -> uriBuilder
                         .path(SEARCH_BY_KEYWORD_PATH)
@@ -89,30 +118,30 @@ public class KakaoLocalClient {
                         .queryParam("y", lat)
                         .queryParam("radius", radius)
                         .queryParam("size", size)
+                        .queryParam("page", page)
                         .queryParam("sort", "distance")
                         .build())
                 .retrieve()
                 .bodyToMono(KakaoLocalSearchResponse.class)
                 .blockOptional(REQUEST_TIMEOUT)
-                .map(KakaoLocalSearchResponse::documents)
-                .orElseGet(List::of);
+                .orElse(null);
     }
 
-    private List<KakaoPlace> safeFetchByCategory(String apiKey, double lng, double lat, int radius, int size) {
+    private KakaoLocalSearchResponse safeFetchByCategory(String apiKey, double lng, double lat, int radius, int size, int page) {
         try {
-            return fetchByCategory(apiKey, lng, lat, radius, size);
+            return fetchByCategory(apiKey, lng, lat, radius, size, page);
         } catch (Exception e) {
             log.warn("Failed to fetch Kakao category places: {}", e.getMessage());
-            return List.of();
+            return null;
         }
     }
 
-    private List<KakaoPlace> safeFetchByKeyword(String apiKey, String keyword, double lng, double lat, int radius, int size) {
+    private KakaoLocalSearchResponse safeFetchByKeyword(String apiKey, String keyword, double lng, double lat, int radius, int size, int page) {
         try {
-            return fetchByKeyword(apiKey, keyword, lng, lat, radius, size);
+            return fetchByKeyword(apiKey, keyword, lng, lat, radius, size, page);
         } catch (Exception e) {
             log.warn("Failed to fetch Kakao keyword places: {}", e.getMessage());
-            return List.of();
+            return null;
         }
     }
 
@@ -140,7 +169,15 @@ public class KakaoLocalClient {
         return StringUtils.hasText(value) && !value.startsWith("your-");
     }
 
-    private record KakaoLocalSearchResponse(List<KakaoPlace> documents) {
+    private record KakaoLocalSearchResponse(KakaoLocalMeta meta, List<KakaoPlace> documents) {
+    }
+
+    private record KakaoLocalMeta(Boolean is_end) {
+    }
+
+    @FunctionalInterface
+    private interface PageFetcher {
+        KakaoLocalSearchResponse fetch(int page);
     }
 
     public record KakaoPlace(

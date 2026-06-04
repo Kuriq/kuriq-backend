@@ -32,10 +32,23 @@ public class StudySpaceService {
     //   1) 공공 공간(도서관, 평생학습관, 50플러스) 먼저 조회
     //   2) 남는 슬롯만큼 카카오 로컬 API에서 민간 공간(카페/스터디카페) 조회
     //   3) 공공 공간을 우선 반환하고, 민간 공간은 후순위로 최대 20개까지 반환
-    public List<StudySpaceResponse> getNearbySpaces(double lat, double lng, Integer radius) {
+    public List<StudySpaceResponse> getNearbySpaces(double lat, double lng, Integer radius, StudySpace.SpaceType type) {
 
         // 반경 유효성 처리: null이면 기본값, MAX_RADIUS 초과 시 최대값으로 고정
         int effectiveRadius = (radius == null) ? DEFAULT_RADIUS : Math.min(radius, MAX_RADIUS);
+
+        if (type == StudySpace.SpaceType.CAFE) {
+            return getNearbyCafeSpaces(lat, lng, effectiveRadius);
+        }
+
+        if (type != null) {
+            return getStoredSpacesByType(lat, lng, effectiveRadius, type);
+        }
+
+        return getMixedSpaces(lat, lng, effectiveRadius);
+    }
+
+    private List<StudySpaceResponse> getMixedSpaces(double lat, double lng, int effectiveRadius) {
 
         // 공공 공간 먼저 조회
         List<StudySpace> publicSpaces = studySpaceRepository.findPublicSpacesNearby(lat, lng, effectiveRadius);
@@ -82,6 +95,39 @@ public class StudySpaceService {
         List<StudySpaceResponse> result = new ArrayList<>(limitedPublicResponses);
         result.addAll(limitedPrivateResponses);
         return result;
+    }
+
+    private List<StudySpaceResponse> getStoredSpacesByType(double lat, double lng, int effectiveRadius, StudySpace.SpaceType type) {
+        return studySpaceRepository.findSpacesNearbyByType(lat, lng, effectiveRadius, type.name()).stream()
+                .map(space -> toResponse(space, lat, lng))
+                .sorted((a, b) -> Integer.compare(a.getDistanceMeters(), b.getDistanceMeters()))
+                .limit(MAX_RESULT_COUNT)
+                .toList();
+    }
+
+    private List<StudySpaceResponse> getNearbyCafeSpaces(double lat, double lng, int effectiveRadius) {
+        return kakaoLocalClient.searchNearbyPrivateSpaces(lat, lng, effectiveRadius, MAX_RESULT_COUNT).stream()
+                .map(place -> StudySpaceResponse.builder()
+                        .id("kakao:" + place.id())
+                        .name(place.place_name())
+                        .type(StudySpace.SpaceType.CAFE.name())
+                        .address(place.resolvedAddress())
+                        .latitude(new BigDecimal(place.y()))
+                        .longitude(new BigDecimal(place.x()))
+                        .operatingHours(null)
+                        .phone(place.phone())
+                        .hasWifi(null)
+                        .hasPowerOutlet(null)
+                        .distanceMeters(place.distanceMeters())
+                        .build())
+                .toList();
+    }
+
+    private StudySpaceResponse toResponse(StudySpace space, double lat, double lng) {
+        double dist = haversine(lat, lng,
+                space.getLatitude().doubleValue(),
+                space.getLongitude().doubleValue());
+        return StudySpaceResponse.from(space, dist);
     }
 
     // Haversine 공식: 두 위경도 좌표 사이의 지표면 거리(미터) 계산

@@ -31,6 +31,26 @@ public interface StudySpaceRepository extends JpaRepository<StudySpace, String> 
             @Param("radius") int radius
     );
 
+    @Query(value = """
+        SELECT *
+        FROM study_spaces
+        WHERE is_active = true
+          AND type = :type
+          AND (
+            6371000 * acos(
+                cos(radians(:lat)) * cos(radians(latitude))
+                * cos(radians(longitude) - radians(:lng))
+                + sin(radians(:lat)) * sin(radians(latitude))
+            )
+          ) <= :radius
+        """, nativeQuery = true)
+    List<StudySpace> findSpacesNearbyByType(
+            @Param("lat") double lat,
+            @Param("lng") double lng,
+            @Param("radius") int radius,
+            @Param("type") String type
+    );
+
     // 반경 내 카페만 거리순 조회
     // 공공 공간이 3개 미만일 때 보조로 추가
     @Query(value = """
