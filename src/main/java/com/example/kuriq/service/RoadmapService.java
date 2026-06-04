@@ -222,32 +222,32 @@ public class RoadmapService {
         }
 
         // 전체 완료 체크
-boolean roadmapJustCompleted = false;
-try {
-    if (item.getRoadmap().allItemsCompleted()) {
-        item.getRoadmap().complete();
-        roadmapJustCompleted = true;
-        log.info("로드맵 전체 완료: roadmapId={}", item.getRoadmap().getId());
-        // 완료 축하 알림 (로드맵 전체 완료 시에만 발송)
-        notificationSettingRepository.findCompletionAlertTarget(userId)
-                .ifPresent(ns -> {
-                    User user = userRepository.findById(userId).orElse(null);
-                    if (user != null && user.getEmail() != null) {
-                        emailService.sendCompletionEmail(
-                                user.getEmail(), userId, user.getName(),
-                                item.getRoadmap().getGoal(), DASHBOARD_URL);
-                    }
-                });
-    }
-} catch (Exception e) {
-    log.error("로드맵 완료 체크 중 오류: {}", e.getMessage(), e);
-}
+        boolean roadmapJustCompleted = false;
+        try {
+            if (item.getRoadmap().allItemsCompleted()) {
+                item.getRoadmap().complete();
+                roadmapJustCompleted = true;
+                log.info("로드맵 전체 완료: roadmapId={}", item.getRoadmap().getId());
+
+                // 완료 축하 알림 (로드맵 전체 완료 시에만 발송)
+                notificationSettingRepository.findCompletionAlertTarget(userId)
+                        .ifPresent(ns -> {
+                            User user = userRepository.findById(userId).orElse(null);
+                            if (user != null && user.getEmail() != null) {
+                                emailService.sendCompletionEmail(
+                                        user.getEmail(), userId, user.getName(),
+                                        item.getRoadmap().getGoal(), DASHBOARD_URL);
+                            }
+                        });
+            }
+        } catch (Exception e) {
+            log.error("로드맵 완료 체크 중 오류: {}", e.getMessage(), e);
         }
 
         // 뱃지 체크 — @Async 이므로 현재 트랜잭션과 분리되어 실행됨
         final boolean finalRoadmapJustCompleted = roadmapJustCompleted;
         org.springframework.transaction.support.TransactionSynchronizationManager
-                .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronizationAdapter() {
+                .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
                     @Override
                     public void afterCommit() {
                         badgeService.checkAndAwardOnCourseComplete(userId);

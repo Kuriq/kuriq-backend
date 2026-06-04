@@ -22,3 +22,7 @@ jwt.refresh-token-expiry=1209600000
 # AI Service
 ai.service.base-url=http://localhost:8000
 internal.api-key=dev-secret
+
+# Kakao Local API
+kakao.local.rest-api-key=${KAKAO_LOCAL_REST_API_KEY:}
+kakao.local.base-url=${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
