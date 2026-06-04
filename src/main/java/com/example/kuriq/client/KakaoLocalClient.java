@@ -34,22 +34,26 @@ public class KakaoLocalClient {
     @Value("${kakao.local.rest-api-key:}")
     private String kakaoRestApiKey;
 
+    @Value("${oauth.kakao.client-id:}")
+    private String kakaoOauthClientId;
+
     public List<KakaoPlace> searchNearbyPrivateSpaces(double lat, double lng, int radius, int limit) {
         if (limit <= 0) {
             return List.of();
         }
 
-        if (!StringUtils.hasText(kakaoRestApiKey)) {
-            log.warn("Kakao Local REST API key is not configured. Returning only public study spaces.");
+        String effectiveApiKey = resolveKakaoApiKey();
+        if (!StringUtils.hasText(effectiveApiKey)) {
+            log.warn("Kakao Local REST API key is not configured. Set KAKAO_LOCAL_REST_API_KEY or oauth.kakao.client-id. Returning only public study spaces.");
             return List.of();
         }
 
         Map<String, KakaoPlace> deduplicated = new LinkedHashMap<>();
 
-        safeFetchByCategory(lng, lat, radius, Math.min(limit, API_MAX_SIZE))
+        safeFetchByCategory(effectiveApiKey, lng, lat, radius, Math.min(limit, API_MAX_SIZE))
                 .forEach(place -> deduplicated.putIfAbsent(place.id(), place));
 
-        safeFetchByKeyword(STUDY_CAFE_KEYWORD, lng, lat, radius, Math.min(limit, API_MAX_SIZE))
+        safeFetchByKeyword(effectiveApiKey, STUDY_CAFE_KEYWORD, lng, lat, radius, Math.min(limit, API_MAX_SIZE))
                 .forEach(place -> deduplicated.putIfAbsent(place.id(), place));
 
         return deduplicated.values().stream()
@@ -58,8 +62,8 @@ public class KakaoLocalClient {
                 .toList();
     }
 
-    private List<KakaoPlace> fetchByCategory(double lng, double lat, int radius, int size) {
-        return get()
+    private List<KakaoPlace> fetchByCategory(String apiKey, double lng, double lat, int radius, int size) {
+        return get(apiKey)
                 .uri(uriBuilder -> uriBuilder
                         .path(SEARCH_BY_CATEGORY_PATH)
                         .queryParam("category_group_code", CAFE_CATEGORY_GROUP_CODE)
@@ -76,8 +80,8 @@ public class KakaoLocalClient {
                 .orElseGet(List::of);
     }
 
-    private List<KakaoPlace> fetchByKeyword(String keyword, double lng, double lat, int radius, int size) {
-        return get()
+    private List<KakaoPlace> fetchByKeyword(String apiKey, String keyword, double lng, double lat, int radius, int size) {
+        return get(apiKey)
                 .uri(uriBuilder -> uriBuilder
                         .path(SEARCH_BY_KEYWORD_PATH)
                         .queryParam("query", keyword)
@@ -94,30 +98,46 @@ public class KakaoLocalClient {
                 .orElseGet(List::of);
     }
 
-    private List<KakaoPlace> safeFetchByCategory(double lng, double lat, int radius, int size) {
+    private List<KakaoPlace> safeFetchByCategory(String apiKey, double lng, double lat, int radius, int size) {
         try {
-            return fetchByCategory(lng, lat, radius, size);
+            return fetchByCategory(apiKey, lng, lat, radius, size);
         } catch (Exception e) {
             log.warn("Failed to fetch Kakao category places: {}", e.getMessage());
             return List.of();
         }
     }
 
-    private List<KakaoPlace> safeFetchByKeyword(String keyword, double lng, double lat, int radius, int size) {
+    private List<KakaoPlace> safeFetchByKeyword(String apiKey, String keyword, double lng, double lat, int radius, int size) {
         try {
-            return fetchByKeyword(keyword, lng, lat, radius, size);
+            return fetchByKeyword(apiKey, keyword, lng, lat, radius, size);
         } catch (Exception e) {
             log.warn("Failed to fetch Kakao keyword places: {}", e.getMessage());
             return List.of();
         }
     }
 
-    private WebClient.RequestHeadersUriSpec<?> get() {
+    private WebClient.RequestHeadersUriSpec<?> get(String apiKey) {
         return webClientBuilder
                 .baseUrl(kakaoLocalBaseUrl)
-                .defaultHeader(HttpHeaders.AUTHORIZATION, "KakaoAK " + kakaoRestApiKey)
+                .defaultHeader(HttpHeaders.AUTHORIZATION, "KakaoAK " + apiKey)
                 .build()
                 .get();
+    }
+
+    private String resolveKakaoApiKey() {
+        if (isUsableKey(kakaoRestApiKey)) {
+            return kakaoRestApiKey;
+        }
+
+        if (isUsableKey(kakaoOauthClientId)) {
+            return kakaoOauthClientId;
+        }
+
+        return "";
+    }
+
+    private boolean isUsableKey(String value) {
+        return StringUtils.hasText(value) && !value.startsWith("your-");
     }
 
     private record KakaoLocalSearchResponse(List<KakaoPlace> documents) {

@@ -25,6 +25,7 @@ public class StudySpaceService {
     private static final int MAX_RADIUS     = 10000;
 
     private static final int MAX_RESULT_COUNT = 20;
+    private static final int MIN_PRIVATE_SPACE_COUNT = 4;
 
     // 위치 기반 주변 학습 공간 조회
     // 처리 순서:
@@ -46,16 +47,17 @@ public class StudySpaceService {
                     return StudySpaceResponse.from(space, dist);
                 })
                 .sorted((a, b) -> Integer.compare(a.getDistanceMeters(), b.getDistanceMeters()))
-                .limit(MAX_RESULT_COUNT)
                 .toList();
 
-        int remainingSlots = MAX_RESULT_COUNT - publicResponses.size();
-        if (remainingSlots <= 0) {
-            return publicResponses;
-        }
+        int privateSlots = Math.min(MIN_PRIVATE_SPACE_COUNT, MAX_RESULT_COUNT);
+        int publicLimit = Math.max(MAX_RESULT_COUNT - privateSlots, 0);
+
+        List<StudySpaceResponse> limitedPublicResponses = publicResponses.stream()
+                .limit(publicLimit)
+                .toList();
 
         List<StudySpaceResponse> privateResponses = kakaoLocalClient
-                .searchNearbyPrivateSpaces(lat, lng, effectiveRadius, remainingSlots)
+                .searchNearbyPrivateSpaces(lat, lng, effectiveRadius, privateSlots)
                 .stream()
                 .map(place -> StudySpaceResponse.builder()
                         .id("kakao:" + place.id())
@@ -72,8 +74,13 @@ public class StudySpaceService {
                         .build())
                 .toList();
 
-        List<StudySpaceResponse> result = new ArrayList<>(publicResponses);
-        result.addAll(privateResponses);
+        int remainingSlots = MAX_RESULT_COUNT - limitedPublicResponses.size();
+        List<StudySpaceResponse> limitedPrivateResponses = privateResponses.stream()
+                .limit(Math.max(remainingSlots, 0))
+                .toList();
+
+        List<StudySpaceResponse> result = new ArrayList<>(limitedPublicResponses);
+        result.addAll(limitedPrivateResponses);
         return result;
     }
 
