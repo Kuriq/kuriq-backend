@@ -1,5 +1,6 @@
 package com.example.kuriq.service;
 
+import com.example.kuriq.client.KakaoLocalClient;
 import com.example.kuriq.dto.space.response.StudySpaceResponse;
 import com.example.kuriq.entity.space.StudySpace;
 import com.example.kuriq.repository.space.StudySpaceRepository;
@@ -7,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,19 +18,19 @@ import java.util.List;
 public class StudySpaceService {
 
     private final StudySpaceRepository studySpaceRepository;
+    private final KakaoLocalClient kakaoLocalClient;
 
-    // 반경 기본값: 2000m / 최대값: 5000m
+    // 반경 기본값: 2000m / 최대값: 10000m
     private static final int DEFAULT_RADIUS = 2000;
-    private static final int MAX_RADIUS     = 5000;
+    private static final int MAX_RADIUS     = 10000;
 
-    // 공공 공간이 이 수 미만이면 카페를 보조로 추가
-    private static final int PUBLIC_SPACE_MIN = 3;
+    private static final int MAX_RESULT_COUNT = 20;
 
     // 위치 기반 주변 학습 공간 조회
     // 처리 순서:
     //   1) 공공 공간(도서관, 평생학습관, 50플러스) 먼저 조회
-    //   2) 공공 공간이 3개 미만이면 카페를 추가로 조회해서 합침
-    //   3) 합친 목록을 거리순으로 재정렬 후 최대 20개 반환
+    //   2) 남는 슬롯만큼 카카오 로컬 API에서 민간 공간(카페/스터디카페) 조회
+    //   3) 공공 공간을 우선 반환하고, 민간 공간은 후순위로 최대 20개까지 반환
     public List<StudySpaceResponse> getNearbySpaces(double lat, double lng, Integer radius) {
 
         // 반경 유효성 처리: null이면 기본값, MAX_RADIUS 초과 시 최대값으로 고정
@@ -36,17 +38,7 @@ public class StudySpaceService {
 
         // 공공 공간 먼저 조회
         List<StudySpace> publicSpaces = studySpaceRepository.findPublicSpacesNearby(lat, lng, effectiveRadius);
-        List<StudySpace> result = new ArrayList<>(publicSpaces);
-
-        // 공공 공간이 기준치 미만이면 카페를 보조로 추가
-        if (publicSpaces.size() < PUBLIC_SPACE_MIN) {
-            List<StudySpace> cafes = studySpaceRepository.findCafesNearby(lat, lng, effectiveRadius);
-            result.addAll(cafes);
-        }
-
-        // 각 공간까지의 거리를 Haversine으로 계산 후 DTO 변환
-        // 공공 + 카페 합쳤을 때 전체 거리순 보장을 위해 재정렬
-        return result.stream()
+        List<StudySpaceResponse> publicResponses = publicSpaces.stream()
                 .map(space -> {
                     double dist = haversine(lat, lng,
                             space.getLatitude().doubleValue(),   // BigDecimal → double
@@ -54,8 +46,35 @@ public class StudySpaceService {
                     return StudySpaceResponse.from(space, dist);
                 })
                 .sorted((a, b) -> Integer.compare(a.getDistanceMeters(), b.getDistanceMeters()))
-                .limit(20) // 최대 20개 제한
+                .limit(MAX_RESULT_COUNT)
                 .toList();
+
+        int remainingSlots = MAX_RESULT_COUNT - publicResponses.size();
+        if (remainingSlots <= 0) {
+            return publicResponses;
+        }
+
+        List<StudySpaceResponse> privateResponses = kakaoLocalClient
+                .searchNearbyPrivateSpaces(lat, lng, effectiveRadius, remainingSlots)
+                .stream()
+                .map(place -> StudySpaceResponse.builder()
+                        .id("kakao:" + place.id())
+                        .name(place.place_name())
+                        .type(StudySpace.SpaceType.CAFE.name())
+                        .address(place.resolvedAddress())
+                        .latitude(new BigDecimal(place.y()))
+                        .longitude(new BigDecimal(place.x()))
+                        .operatingHours(null)
+                        .phone(place.phone())
+                        .hasWifi(null)
+                        .hasPowerOutlet(null)
+                        .distanceMeters(place.distanceMeters())
+                        .build())
+                .toList();
+
+        List<StudySpaceResponse> result = new ArrayList<>(publicResponses);
+        result.addAll(privateResponses);
+        return result;
     }
 
     // Haversine 공식: 두 위경도 좌표 사이의 지표면 거리(미터) 계산
