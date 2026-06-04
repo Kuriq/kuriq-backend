@@ -10,11 +10,14 @@ import com.example.kuriq.repository.post.PostLikeRepository;
 import com.example.kuriq.repository.post.PostRepository;
 import com.example.kuriq.repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -29,6 +32,7 @@ public class PostService {
     private final PostLikeRepository postLikeRepository;
     private final UserRepository userRepository;
     private final BadgeService badgeService; // ★ 추가
+    private final StringRedisTemplate redisTemplate;
 
     // 게시글 목록 조회
     // 최신순 (기본)
@@ -38,9 +42,16 @@ public class PostService {
         return buildPageResponse(posts);
     }
 
-    // 댓글많은순 (같은 댓글 수면 최신순)
-    public PostDto.PageResponse getPostsByComment(int page, int size) {
-        Page<Post> posts = postRepository.findByIsDeletedFalseOrderByCommentCountDescCreatedAtDesc(
+    // 조회수순 (같은 조회 수면 최신순)
+    public PostDto.PageResponse getPostsByViews(int page, int size) {
+        Page<Post> posts = postRepository.findByIsDeletedFalseOrderByViewCountDescCreatedAtDesc(
+                PageRequest.of(page, size));
+        return buildPageResponse(posts);
+    }
+
+    // 인기순 (좋아요 → 조회수 → 최신순)
+    public PostDto.PageResponse getPostsByPopular(int page, int size) {
+        Page<Post> posts = postRepository.findByIsDeletedFalseOrderByLikeCountDescViewCountDescCreatedAtDesc(
                 PageRequest.of(page, size));
         return buildPageResponse(posts);
     }
@@ -66,11 +77,12 @@ public class PostService {
 
     // 게시글 상세 조회
     @Transactional
-    public PostDto.DetailResponse getPost(String postId, String userId) {
+    public PostDto.DetailResponse getPost(String postId, String userId, boolean increaseView, String sessionId) {
         Post post = getPostOrThrow(postId);
 
-        // 조회수 증가 — 중복 방지 로직은 컨트롤러 또는 세션 기반으로 처리
-        post.increaseViewCount();
+        if (increaseView && shouldIncreaseView(postId, userId, sessionId)) {
+            post.increaseViewCount();
+        }
 
         // 작성자 이름
         String authorName = userRepository.findById(post.getUserId())
@@ -83,6 +95,15 @@ public class PostService {
         List<PostDto.CommentResponse> comments = buildCommentTree(postId);
 
         return PostDto.DetailResponse.from(post, authorName, likedByMe, comments);
+    }
+
+    private boolean shouldIncreaseView(String postId, String userId, String sessionId) {
+        String viewerKey = userId != null ? "user:" + userId : sessionId != null ? "session:" + sessionId : null;
+        if (viewerKey == null) return true;
+
+        String dedupKey = "post:view:" + viewerKey + ":" + postId + ":" + LocalDate.now();
+        Boolean firstView = redisTemplate.opsForValue().setIfAbsent(dedupKey, "1", Duration.ofHours(1));
+        return !Boolean.FALSE.equals(firstView);
     }
 
     // 최상위 댓글 + 대댓글 조합
@@ -114,6 +135,7 @@ public class PostService {
                 .userId(userId)
                 .title(req.getTitle())
                 .content(req.getContent())
+                .anonymous(req.isAnonymous())
                 .build();
         postRepository.save(post);
 
@@ -131,7 +153,7 @@ public class PostService {
         Post post = getPostOrThrow(postId);
         validateOwner(post.getUserId(), userId); // 본인 확인
 
-        post.update(req.getTitle(), req.getContent());
+        post.update(req.getTitle(), req.getContent(), req.isAnonymous());
         String authorName = userRepository.findById(userId).map(User::getName).orElse("알 수 없음");
         return PostDto.SummaryResponse.from(post, authorName);
     }
@@ -186,6 +208,7 @@ public class PostService {
                 .userId(userId)
                 .parentId(req.getParentId())
                 .content(req.getContent())
+                .anonymous(req.isAnonymous())
                 .build();
         postCommentRepository.save(comment);
         post.increaseCommentCount(); // 댓글 수 증가
@@ -202,7 +225,7 @@ public class PostService {
                 .orElseThrow(() -> new IllegalArgumentException("댓글을 찾을 수 없습니다."));
         validateOwner(comment.getUserId(), userId);
 
-        comment.update(req.getContent());
+        comment.update(req.getContent(), req.isAnonymous());
         String authorName = userRepository.findById(userId).map(User::getName).orElse("알 수 없음");
         return PostDto.CommentResponse.from(comment, authorName, List.of());
     }

@@ -34,6 +34,8 @@ public class PostDto {
 
         @NotBlank(message = "본문을 입력해주세요.")
         private String content;
+
+        private boolean anonymous;
     }
 
     // 게시글 수정 요청
@@ -45,6 +47,8 @@ public class PostDto {
 
         @NotBlank(message = "본문을 입력해주세요.")
         private String content;
+
+        private boolean anonymous;
     }
 
     // 댓글 작성 요청
@@ -55,6 +59,8 @@ public class PostDto {
 
         // 대댓글인 경우 부모 댓글 ID (최상위 댓글이면 null)
         private String parentId;
+
+        private boolean anonymous;
     }
 
     // 댓글 수정 요청
@@ -62,6 +68,8 @@ public class PostDto {
     public static class CommentUpdateRequest {
         @NotBlank(message = "댓글 내용을 입력해주세요.")
         private String content;
+
+        private boolean anonymous;
     }
 
     /* 응답 */
@@ -73,6 +81,7 @@ public class PostDto {
         private String id;
         private String title;
         private String authorName;
+        private boolean anonymous;
         private int viewCount;
         private int likeCount;
         private int commentCount;
@@ -82,7 +91,8 @@ public class PostDto {
             return SummaryResponse.builder()
                     .id(post.getId())
                     .title(post.getTitle())
-                    .authorName(authorName)
+                    .authorName(post.isAnonymous() ? "익명" : authorName)
+                    .anonymous(post.isAnonymous())
                     .viewCount(post.getViewCount())
                     .likeCount(post.getLikeCount())
                     .commentCount(post.getCommentCount())
@@ -100,6 +110,7 @@ public class PostDto {
         private String content;
         private String authorId;
         private String authorName;
+        private boolean anonymous;
         private int viewCount;
         private int likeCount;
         private int commentCount;
@@ -115,7 +126,8 @@ public class PostDto {
                     .title(post.getTitle())
                     .content(post.getContent())
                     .authorId(post.getUserId())
-                    .authorName(authorName)
+                    .authorName(post.isAnonymous() ? "익명" : authorName)
+                    .anonymous(post.isAnonymous())
                     .viewCount(post.getViewCount())
                     .likeCount(post.getLikeCount())
                     .commentCount(post.getCommentCount())
@@ -134,6 +146,7 @@ public class PostDto {
         private String id;
         private String authorId;
         private String authorName;
+        private boolean anonymous;
         private String content;
         private boolean isDeleted;
         private String parentId;
@@ -145,7 +158,8 @@ public class PostDto {
             return CommentResponse.builder()
                     .id(comment.getId())
                     .authorId(comment.getUserId())
-                    .authorName(comment.isDeleted() ? null : authorName)
+                    .authorName(comment.isDeleted() ? null : comment.isAnonymous() ? "익명" : authorName)
+                    .anonymous(comment.isAnonymous())
                     .content(comment.getContent())
                     .isDeleted(comment.isDeleted())
                     .parentId(comment.getParentId())

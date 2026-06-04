@@ -42,6 +42,10 @@ public class CourseReview {
     @Column(columnDefinition = "TEXT")
     private String content;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean anonymous = false;
+
     // 사전 지식 수준 — 선택. difficulty_match와 함께 표시
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
@@ -102,12 +106,14 @@ public class CourseReview {
 
     // 리뷰 수정 — 삭제된 리뷰는 수정 불가
     public void update(int rating, String content,
-                       PriorKnowledge priorKnowledge, DifficultyMatch difficultyMatch) {
+                       PriorKnowledge priorKnowledge, DifficultyMatch difficultyMatch,
+                       boolean anonymous) {
         if (this.isDeleted) throw new IllegalStateException("삭제된 리뷰는 수정할 수 없습니다.");
         this.rating = rating;
         this.content = content;
         this.priorKnowledge = priorKnowledge;
         this.difficultyMatch = difficultyMatch;
+        this.anonymous = anonymous;
     }
 
     // 소프트 삭제
