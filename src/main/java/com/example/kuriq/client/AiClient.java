@@ -1,15 +1,13 @@
 package com.example.kuriq.client;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
+
 
 @Component
 @RequiredArgsConstructor
@@ -207,6 +205,37 @@ public class AiClient {
         }
     }
 
+    // 다음 추천 요청 DTO
+    // Spring Boot -> AI 서버로 보내는 요청
+    // courseId: 본인 강좌 제외용, category: 벡터 검색 필터, top_k: 후보 수
+    @Getter
+    @Builder
+    public static class RecommendationAiRequest {
+        private String courseId;
+        private String courseTitle;
+        private String category;
+        private int top_k;
+    }
+
+    // 다음 추천 응답 DTO
+    // AI 서버 -> Spring Boot로 오는 응답
+    @Getter
+    @Setter
+    public static class RecommendationAiResponse {
+        private List<RecommendationCourseDto> courses;
+
+        // 추천 강좌 1개
+        @Getter
+        @Setter
+        public static class RecommendationCourseDto {
+            private String course_id;
+            private String title;
+            private String institution;
+            private String category;
+            private String duration;
+        }
+    }
+
     public RoadmapGenerateAiResponse generateRoadmap(RoadmapGenerateAiRequest request) {
         return aiWebClient.post()
                 .uri("/internal/ai/roadmap/generate")
@@ -320,10 +349,24 @@ public class AiClient {
                 .block(Duration.ofSeconds(10));
     }
 
+    // 다음 추천 AI 서버 호출
+    // 최근 이수한 강좌의 카테고리 기반으로 유사 강좌 추천 목록 받아옴
+    public RecommendationAiResponse getRecommendations(RecommendationAiRequest request) {
+        return aiWebClient.post()
+                .uri("/internal/ai/recommendations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(RecommendationAiResponse.class)
+                .block(Duration.ofSeconds(10));
+    }
+
     private QuizGenerateAiResponse.OptionDto createOption(String id, String text) {
         QuizGenerateAiResponse.OptionDto option = new QuizGenerateAiResponse.OptionDto();
         option.setId(id);
         option.setText(text);
         return option;
     }
+
+
 }

@@ -1,10 +1,12 @@
 package com.example.kuriq.controller;
 
 
+import com.example.kuriq.dto.course.response.NextCourseResponse;
 import com.example.kuriq.dto.notification.request.NotificationUpdateRequest;
 import com.example.kuriq.dto.notification.response.NotificationResponse;
 import com.example.kuriq.dto.user.request.DeleteAccountRequest;
 import com.example.kuriq.dto.user.response.*;
+import com.example.kuriq.service.RecommendationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -28,6 +30,7 @@ import java.util.List;
 public class UserController {
 
     private final UserService userService;
+    private final RecommendationService recommendationService; // 다음 추천 강좌
 
     @Operation(summary = "내 정보 조회")
     @SecurityRequirement(name = "bearerAuth")
@@ -106,6 +109,21 @@ public class UserController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") @Max(value = 50, message = "size는 최대 50까지 가능합니다") int size) {
         return ResponseEntity.ok(userService.getLearningHistory(userId, page, size));
+    }
+
+    @Operation(
+            summary = "다음 추천 강좌 조회",
+            description = "가장 최근 이수한 강좌의 카테고리와 난이도를 기반으로 다음 단계 강좌를 추천합니다. " +
+                    "이수 이력이 없거나 추천할 강좌가 없으면 204를 반환합니다."
+    )
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/me/recommendations")
+    public ResponseEntity<List<NextCourseResponse>> getRecommendation(
+            @AuthenticationPrincipal String userId) {
+        List<NextCourseResponse> result = recommendationService.getRecommendation(userId);
+        return result.isEmpty()
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.ok(result);
     }
 
 }
