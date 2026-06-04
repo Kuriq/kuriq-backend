@@ -13,8 +13,11 @@ public interface PostRepository extends JpaRepository<Post, String> {
     // 전체 목록 — 최신순 (기본)
     Page<Post> findByIsDeletedFalseOrderByCreatedAtDesc(Pageable pageable);
 
-    // 전체 목록 — 댓글많은순, 같은 댓글 수면 최신순
-    Page<Post> findByIsDeletedFalseOrderByCommentCountDescCreatedAtDesc(Pageable pageable);
+    // 전체 목록 — 조회수순, 같은 조회 수면 최신순
+    Page<Post> findByIsDeletedFalseOrderByViewCountDescCreatedAtDesc(Pageable pageable);
+
+    // 전체 목록 — 인기순(좋아요 → 조회수 → 최신순)
+    Page<Post> findByIsDeletedFalseOrderByLikeCountDescViewCountDescCreatedAtDesc(Pageable pageable);
 
     // 단건 조회 — 삭제되지 않은 게시글만
     Optional<Post> findByIdAndIsDeletedFalse(String id);

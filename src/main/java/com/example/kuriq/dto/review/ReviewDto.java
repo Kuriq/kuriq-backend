@@ -34,6 +34,8 @@ public class ReviewDto {
         private CourseReview.PriorKnowledge priorKnowledge; // 선택
 
         private CourseReview.DifficultyMatch difficultyMatch; // 선택
+
+        private boolean anonymous;
     }
 
     @Getter
@@ -48,6 +50,8 @@ public class ReviewDto {
         private CourseReview.PriorKnowledge priorKnowledge; // 선택
 
         private CourseReview.DifficultyMatch difficultyMatch; // 선택
+
+        private boolean anonymous;
     }
 
     /*** 응답 ***/
@@ -67,6 +71,7 @@ public class ReviewDto {
         private String id;
         private String authorId;
         private String authorName;
+        private boolean anonymous;
         private int rating;
         private String content;
         private CourseReview.PriorKnowledge priorKnowledge; // 사전 지식 수준
@@ -79,7 +84,8 @@ public class ReviewDto {
             return ReviewResponse.builder()
                     .id(review.getId())
                     .authorId(review.getUserId())
-                    .authorName(authorName)
+                    .authorName(review.isAnonymous() ? "익명" : authorName)
+                    .anonymous(review.isAnonymous())
                     .rating(review.getRating())
                     .content(review.getContent())
                     .priorKnowledge(review.getPriorKnowledge())

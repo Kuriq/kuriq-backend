@@ -11,7 +11,8 @@ import java.time.LocalDateTime;
         name = "posts",
         indexes = {
                 @Index(name = "idx_posts_user_created", columnList = "userId, createdAt"),
-                @Index(name = "idx_posts_comment", columnList = "commentCount"),       // 댓글많은순 정렬용
+                @Index(name = "idx_posts_view", columnList = "viewCount"),
+                @Index(name = "idx_posts_like", columnList = "likeCount"),
                 @Index(name = "idx_posts_active", columnList = "isDeleted, createdAt") // 활성 게시글 조회용
         }
 )
@@ -37,6 +38,10 @@ public class Post {
     // 본문 (리치 텍스트 에디터 입력값)
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean anonymous = false;
 
     // 조회수 캐시 — 동일 사용자/세션 1시간 내 중복 집계 제외
     @Column(nullable = false)
@@ -76,9 +81,10 @@ public class Post {
     }
 
     // 게시글 수정
-    public void update(String title, String content) {
+    public void update(String title, String content, boolean anonymous) {
         this.title = title;
         this.content = content;
+        this.anonymous = anonymous;
     }
 
     // 소프트 삭제

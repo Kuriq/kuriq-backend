@@ -6,7 +6,6 @@ import com.example.kuriq.entity.review.CourseReviewLike;
 import com.example.kuriq.entity.user.User;
 import com.example.kuriq.repository.review.CourseReviewLikeRepository;
 import com.example.kuriq.repository.review.CourseReviewRepository;
-import com.example.kuriq.repository.roadmap.LearningHistoryRepository;
 import com.example.kuriq.repository.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -16,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -25,7 +25,6 @@ public class CourseReviewService {
 
     private final CourseReviewRepository reviewRepository;
     private final CourseReviewLikeRepository reviewLikeRepository;
-    private final LearningHistoryRepository learningHistoryRepository; // 이수 여부 검증용
     private final UserRepository userRepository;
 
     // 강좌 평점 요약 조회
@@ -67,14 +66,19 @@ public class CourseReviewService {
                 .build();
     }
 
+    public Optional<ReviewDto.ReviewResponse> getMyReview(String userId, String courseId) {
+        String authorName = userRepository.findById(userId).map(User::getName).orElse("알 수 없음");
+
+        return reviewRepository.findByUserIdAndCourseIdAndIsDeletedFalse(userId, courseId)
+                .map(review -> {
+                    boolean likedByMe = reviewLikeRepository.existsByReviewIdAndUserId(review.getId(), userId);
+                    return ReviewDto.ReviewResponse.from(review, authorName, likedByMe);
+                });
+    }
+
     // 리뷰 작성
     @Transactional
     public ReviewDto.ReviewResponse createReview(String userId, String courseId, ReviewDto.CreateRequest req) {
-        // 이수 여부 검증 — learning_history에 userId + courseId 존재 여부 확인
-        if (!learningHistoryRepository.existsByUserIdAndCourseId(userId, courseId)) {
-            throw new IllegalStateException("강좌를 이수한 후 리뷰를 작성할 수 있어요.");
-        }
-
         // 1인 1리뷰 중복 체크
         if (reviewRepository.existsByUserIdAndCourseIdAndIsDeletedFalse(userId, courseId)) {
             throw new IllegalStateException("이미 리뷰를 작성한 강좌입니다.");
@@ -85,6 +89,7 @@ public class CourseReviewService {
                 .courseId(courseId)
                 .rating(req.getRating())
                 .content(req.getContent())
+                .anonymous(req.isAnonymous())
                 .priorKnowledge(req.getPriorKnowledge())
                 .difficultyMatch(req.getDifficultyMatch())
                 .build();
@@ -100,7 +105,7 @@ public class CourseReviewService {
         CourseReview review = reviewRepository.findByUserIdAndCourseIdAndIsDeletedFalse(userId, courseId)
                 .orElseThrow(() -> new IllegalArgumentException("리뷰를 찾을 수 없습니다."));
 
-        review.update(req.getRating(), req.getContent(), req.getPriorKnowledge(), req.getDifficultyMatch());
+        review.update(req.getRating(), req.getContent(), req.getPriorKnowledge(), req.getDifficultyMatch(), req.isAnonymous());
         String authorName = userRepository.findById(userId).map(User::getName).orElse("알 수 없음");
         return ReviewDto.ReviewResponse.from(review, authorName, false);
     }

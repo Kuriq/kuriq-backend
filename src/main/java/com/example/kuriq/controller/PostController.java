@@ -7,11 +7,16 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
+import java.util.UUID;
 import java.util.List;
 
 @Tag(name = "게시판", description = "자유 게시판 API")
@@ -21,8 +26,9 @@ import java.util.List;
 public class PostController {
 
     private final PostService postService;
+    private static final String VIEW_SESSION_COOKIE = "community_view_session";
 
-    // 최신순(기본) / 댓글많은순
+    // 최신순(기본) / 조회수순 / 인기순
     @Operation(summary = "게시글 목록 조회")
     @GetMapping
     public ResponseEntity<PostDto.PageResponse> getPosts(
@@ -31,7 +37,8 @@ public class PostController {
             @RequestParam(defaultValue = "20") int size) {
 
         PostDto.PageResponse result = switch (sort) {
-            case "comments" -> postService.getPostsByComment(page, size);
+            case "views" -> postService.getPostsByViews(page, size);
+            case "popular" -> postService.getPostsByPopular(page, size);
             default -> postService.getPostsLatest(page, size);
         };
         return ResponseEntity.ok(result);
@@ -53,8 +60,20 @@ public class PostController {
     @GetMapping("/{postId}")
     public ResponseEntity<PostDto.DetailResponse> getPost(
             @PathVariable String postId,
-            @AuthenticationPrincipal String userId) { // 비로그인이면 null
-        return ResponseEntity.ok(postService.getPost(postId, userId));
+            @AuthenticationPrincipal String userId,
+            @RequestParam(defaultValue = "true") boolean increaseView,
+            HttpServletRequest httpReq,
+            HttpServletResponse httpRes) { // 비로그인이면 null
+        String sessionId = null;
+        if (userId == null) {
+            sessionId = getSessionId(httpReq);
+            if (sessionId == null) {
+                sessionId = UUID.randomUUID().toString();
+                setSessionCookie(httpRes, sessionId);
+            }
+        }
+
+        return ResponseEntity.ok(postService.getPost(postId, userId, increaseView, sessionId));
     }
 
     // 게시글 수정 (본인만)
@@ -122,5 +141,22 @@ public class PostController {
             @PathVariable String commentId) {
         postService.deleteComment(userId, commentId);
         return ResponseEntity.noContent().build();
+    }
+
+    private String getSessionId(HttpServletRequest req) {
+        if (req.getCookies() == null) return null;
+        return Arrays.stream(req.getCookies())
+                .filter(cookie -> VIEW_SESSION_COOKIE.equals(cookie.getName()))
+                .map(Cookie::getValue)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void setSessionCookie(HttpServletResponse res, String sessionId) {
+        Cookie cookie = new Cookie(VIEW_SESSION_COOKIE, sessionId);
+        cookie.setPath("/");
+        cookie.setHttpOnly(true);
+        cookie.setMaxAge(7 * 24 * 60 * 60);
+        res.addCookie(cookie);
     }
 }

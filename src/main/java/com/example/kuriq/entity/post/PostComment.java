@@ -41,6 +41,10 @@ public class PostComment {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean anonymous = false;
+
     // true면 삭제된 상태(실제 DB에서 제거하지 않고 표시만 함)
     @Column(nullable = false)
     @Builder.Default
@@ -64,9 +68,10 @@ public class PostComment {
     }
 
     // 댓글 수정 — 삭제된 댓글은 수정 불가
-    public void update(String content) {
+    public void update(String content, boolean anonymous) {
         if (this.isDeleted) throw new IllegalStateException("삭제된 댓글은 수정할 수 없습니다.");
         this.content = content;
+        this.anonymous = anonymous;
     }
 
     // 소프트 삭제 — 내용을 "삭제된 댓글입니다."로 대체
