@@ -119,8 +119,9 @@ public class UserController {
     @SecurityRequirement(name = "bearerAuth")
     @GetMapping("/me/recommendations")
     public ResponseEntity<List<NextCourseResponse>> getRecommendation(
-            @AuthenticationPrincipal String userId) {
-        List<NextCourseResponse> result = recommendationService.getRecommendation(userId);
+            @AuthenticationPrincipal String userId,
+            @RequestParam(required = false) String roadmapId) {
+        List<NextCourseResponse> result = recommendationService.getRecommendation(userId, roadmapId);
         return result.isEmpty()
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.ok(result);

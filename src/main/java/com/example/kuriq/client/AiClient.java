@@ -233,6 +233,7 @@ public class AiClient {
             private String institution;
             private String category;
             private String duration;
+            private String url;
         }
     }
 

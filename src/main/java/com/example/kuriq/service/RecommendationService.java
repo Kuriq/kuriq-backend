@@ -5,8 +5,11 @@ import com.example.kuriq.dto.course.response.NextCourseResponse;
 import com.example.kuriq.entity.roadmap.Course;
 import com.example.kuriq.entity.roadmap.LearningHistory;
 import com.example.kuriq.entity.roadmap.Platform;
+import com.example.kuriq.entity.roadmap.Roadmap;
+import com.example.kuriq.entity.roadmap.RoadmapItem;
 import com.example.kuriq.repository.roadmap.CourseRepository;
 import com.example.kuriq.repository.roadmap.LearningHistoryRepository;
+import com.example.kuriq.repository.roadmap.RoadmapRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -14,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,43 +29,33 @@ public class RecommendationService {
 
     private final LearningHistoryRepository learningHistoryRepository;
     private final CourseRepository courseRepository;
+    private final RoadmapRepository roadmapRepository;
     private final AiClient aiClient;
 
-    public List<NextCourseResponse> getRecommendation(String userId) {
+    public List<NextCourseResponse> getRecommendation(String userId, String roadmapId) {
 
-        // 1. 가장 최근 이수한 강좌 조회
-        List<LearningHistory> histories =
-                learningHistoryRepository.findByUserIdOrderByCompletedAtDesc(userId,
-                        PageRequest.of(0, 1));
-
-        if (histories.isEmpty()) {
+        Optional<RecommendationSeed> seedOpt = resolveSeed(userId, roadmapId);
+        if (seedOpt.isEmpty()) {
             return List.of();
         }
 
-        String lastCourseId = histories.get(0).getCourseId();
+        RecommendationSeed seed = seedOpt.get();
+        Course baseCourse = seed.course();
+        String category = baseCourse.getCategory();
 
-        // 2. 해당 강좌의 카테고리 조회
-        Optional<Course> lastCourseOpt = courseRepository.findById(lastCourseId);
-        if (lastCourseOpt.isEmpty()) {
-            return List.of();
-        }
-
-        Course lastCourse = lastCourseOpt.get();
-        String category = lastCourse.getCategory();
-
-        if (category == null) {
+        if (category == null || category.isBlank()) {
             return List.of();
         }
 
         // 3. AI 서버에 벡터 유사도 기반 추천 요청
-        String aiCourseId = lastCourse.getPlatform().name() + "_" + lastCourse.getPlatformCourseId();
+        String aiCourseId = baseCourse.getPlatform().name() + "_" + baseCourse.getPlatformCourseId();
 
         AiClient.RecommendationAiResponse aiResponse;
         try {
             aiResponse = aiClient.getRecommendations(
                     AiClient.RecommendationAiRequest.builder()
                             .courseId(aiCourseId)
-                            .courseTitle(lastCourse.getTitle())
+                            .courseTitle(baseCourse.getTitle())
                             .category(category)
                             .top_k(5)
                             .build()
@@ -88,7 +82,7 @@ public class RecommendationService {
 
             String platformStr = courseIdRaw.substring(0, lastIdx);   // LLL_PORTAL
             String platformCourseId = courseIdRaw.substring(lastIdx + 1); // 2390297
-            String message = buildMessage(lastCourse.getTitle(), recommended.getTitle());
+            String message = buildMessage(seed, recommended.getTitle());
 
             Optional<Course> courseOpt = Optional.empty();
             try {
@@ -110,7 +104,7 @@ public class RecommendationService {
                         .category(recommended.getCategory())
                         .difficulty(null)
                         .estimatedHours(null)
-                        .url(null)
+                        .url(recommended.getUrl())
                         .hasCertificate(null)
                         .message(message)
                         .build());
@@ -119,8 +113,83 @@ public class RecommendationService {
         return result;
     }
 
+    private Optional<RecommendationSeed> resolveSeed(String userId, String roadmapId) {
+        if (roadmapId != null && !roadmapId.isBlank()) {
+            Optional<RecommendationSeed> roadmapSeed = findRoadmapSeed(userId, roadmapId);
+            if (roadmapSeed.isPresent()) {
+                return roadmapSeed;
+            }
+        }
+        return findLatestCompletedSeed(userId);
+    }
+
+    private Optional<RecommendationSeed> findRoadmapSeed(String userId, String roadmapId) {
+        Optional<Roadmap> roadmapOpt = roadmapRepository.findByIdWithItems(roadmapId);
+        if (roadmapOpt.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Roadmap roadmap = roadmapOpt.get();
+        if (!roadmap.getUserId().equals(userId)) {
+            log.warn("[추천] 다른 사용자의 로드맵 접근 시도: roadmapId={}", roadmapId);
+            return Optional.empty();
+        }
+
+        List<RoadmapItem> items = roadmap.getItems();
+        if (items == null || items.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<RoadmapItem> latestCompleted = items.stream()
+                .filter(item -> Boolean.TRUE.equals(item.getIsCompleted()))
+                .filter(item -> item.getCompletedAt() != null)
+                .filter(item -> item.getCourse() != null)
+                .max(Comparator.comparing(RoadmapItem::getCompletedAt));
+
+        if (latestCompleted.isPresent()) {
+            return Optional.of(new RecommendationSeed(latestCompleted.get().getCourse(), true));
+        }
+
+        Optional<RoadmapItem> currentItem = items.stream()
+                .filter(item -> !Boolean.TRUE.equals(item.getIsCompleted()))
+                .filter(item -> item.getCourse() != null)
+                .min(Comparator.comparing(RoadmapItem::getWeekNumber)
+                        .thenComparing(RoadmapItem::getOrderInWeek));
+
+        if (currentItem.isPresent()) {
+            return Optional.of(new RecommendationSeed(currentItem.get().getCourse(), false));
+        }
+
+        return items.stream()
+                .filter(item -> item.getCourse() != null)
+                .max(Comparator.comparing(RoadmapItem::getWeekNumber)
+                        .thenComparing(RoadmapItem::getOrderInWeek))
+                .map(item -> new RecommendationSeed(item.getCourse(), true));
+    }
+
+    private Optional<RecommendationSeed> findLatestCompletedSeed(String userId) {
+        List<LearningHistory> histories = learningHistoryRepository.findByUserIdOrderByCompletedAtDesc(
+                userId,
+                PageRequest.of(0, 1)
+        );
+
+        if (histories.isEmpty()) {
+            return Optional.empty();
+        }
+
+        return courseRepository.findById(histories.get(0).getCourseId())
+                .map(course -> new RecommendationSeed(course, true));
+    }
+
     // 큐리 추천 메시지 생성
-    private String buildMessage(String lastTitle, String nextTitle) {
+    private String buildMessage(RecommendationSeed seed, String nextTitle) {
+        String lastTitle = seed.course().getTitle();
+
+        if (!seed.completedBased()) {
+            return String.format("현재 보고 있는 %s 흐름과 이어서 %s 과정도 추천해요!",
+                    lastTitle, nextTitle);
+        }
+
         // 마지막 글자 받침 여부에 따라 을/를 선택
         char lastChar = lastTitle.charAt(lastTitle.length() - 1);
         boolean hasBatchim = (lastChar - 0xAC00) % 28 != 0;
@@ -128,5 +197,8 @@ public class RecommendationService {
 
         return String.format("%s%s 잘 마무리했어요! 다음으로 %s 과정은 어떨까요?",
                 lastTitle, eul, nextTitle);
+    }
+
+    private record RecommendationSeed(Course course, boolean completedBased) {
     }
 }
