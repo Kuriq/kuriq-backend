@@ -26,6 +26,7 @@ public class CourseReviewService {
     private final CourseReviewRepository reviewRepository;
     private final CourseReviewLikeRepository reviewLikeRepository;
     private final UserRepository userRepository;
+    private final BadgeService badgeService;
 
     // 강좌 평점 요약 조회
     public ReviewDto.SummaryResponse getSummary(String courseId) {
@@ -135,6 +136,7 @@ public class CourseReviewService {
             reviewLikeRepository.save(CourseReviewLike.builder()
                     .reviewId(reviewId).userId(userId).build());
             review.increaseLikeCount();
+            badgeService.checkAndAwardOnCommunityActivity(review.getUserId());
             return ReviewDto.LikeResponse.builder().liked(true).likeCount(review.getLikeCount()).build();
         }
     }

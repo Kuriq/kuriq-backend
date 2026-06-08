@@ -182,6 +182,7 @@ public class PostService {
             postLikeRepository.save(PostLike.builder()
                     .postId(postId).userId(userId).build());
             post.increaseLikeCount();
+            badgeService.checkAndAwardOnCommunityActivity(post.getUserId());
             return PostDto.LikeResponse.builder().liked(true).likeCount(post.getLikeCount()).build();
         }
     }

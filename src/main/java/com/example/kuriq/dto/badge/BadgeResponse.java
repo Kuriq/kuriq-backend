@@ -6,10 +6,6 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @Getter
 @Builder
@@ -33,10 +29,16 @@ public class BadgeResponse {
     // 획득 시각 (미획득이면 null)
     private LocalDateTime acquiredAt;
 
+    // 진행 수치 (없으면 null)
+    private Integer progressCurrent;
+
+    // 진행 목표 (없으면 null)
+    private Integer progressTotal;
+
     // 변환 메서드
 
     // 획득한 Badge 엔티티 -> 응답 DTO
-    public static BadgeResponse from(Badge badge) {
+    public static BadgeResponse from(Badge badge, Integer progressCurrent, Integer progressTotal) {
         BadgeType type = badge.getBadgeType();
         return BadgeResponse.builder()
                 .id(badge.getId())
@@ -45,11 +47,13 @@ public class BadgeResponse {
                 .description(type.getDescription())
                 .acquired(true)
                 .acquiredAt(badge.getAcquiredAt())
+                .progressCurrent(progressCurrent)
+                .progressTotal(progressTotal)
                 .build();
     }
 
     // 미획득 뱃지 타입 -> 잠금 상태 DTO
-    private static BadgeResponse locked(BadgeType type) {
+    public static BadgeResponse locked(BadgeType type, Integer progressCurrent, Integer progressTotal) {
         return BadgeResponse.builder()
                 .id(null)
                 .badgeType(type.name())
@@ -57,19 +61,8 @@ public class BadgeResponse {
                 .description(type.getDescription())
                 .acquired(false)
                 .acquiredAt(null)
+                .progressCurrent(progressCurrent)
+                .progressTotal(progressTotal)
                 .build();
-    }
-
-    // 전체 뱃지 목록 응답 (획득 + 미획득 모두 포함)
-    public static List<BadgeResponse> buildFullList(List<Badge> acquiredBadges) {
-        Map<BadgeType, Badge> badgeMap = acquiredBadges.stream()
-                .collect(Collectors.toMap(Badge::getBadgeType, badge -> badge));
-
-        return Arrays.stream(BadgeType.values())
-                .map(type -> {
-                    Badge badge = badgeMap.get(type);
-                    return badge != null ? from(badge) : locked(type);
-                })
-                .toList();
     }
 }

@@ -4,6 +4,8 @@ import com.example.kuriq.entity.post.Post;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,4 +26,9 @@ public interface PostRepository extends JpaRepository<Post, String> {
 
     // 내 게시글 목록
     Page<Post> findByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(String userId, Pageable pageable);
+
+    long countByUserIdAndIsDeletedFalse(String userId);
+
+    @Query("SELECT COALESCE(SUM(p.likeCount), 0) FROM Post p WHERE p.userId = :userId AND p.isDeleted = false")
+    long sumLikeCountByUserId(@Param("userId") String userId);
 }

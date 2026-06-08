@@ -30,4 +30,9 @@ public interface CourseReviewRepository extends JpaRepository<CourseReview, Stri
 
     // 강좌 리뷰 수 집계
     long countByCourseIdAndIsDeletedFalse(String courseId);
+
+    long countByUserIdAndIsDeletedFalse(String userId);
+
+    @Query("SELECT COALESCE(SUM(r.likeCount), 0) FROM CourseReview r WHERE r.userId = :userId AND r.isDeleted = false")
+    long sumLikeCountByUserId(@Param("userId") String userId);
 }
