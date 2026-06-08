@@ -75,6 +75,41 @@ public class PostService {
                 .build();
     }
 
+    public PostDto.PageResponse getMyPosts(String userId, int page, int size) {
+        Page<Post> posts = postRepository.findByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(userId, PageRequest.of(page, size));
+        return buildPageResponse(posts);
+    }
+
+    public PostDto.MyCommentPageResponse getMyComments(String userId, int page, int size) {
+        Page<PostComment> commentPage = postCommentRepository.findByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(userId, PageRequest.of(page, size));
+        List<String> postIds = commentPage.getContent().stream().map(PostComment::getPostId).distinct().toList();
+        Map<String, Post> postMap = postRepository.findAllById(postIds).stream().collect(Collectors.toMap(Post::getId, post -> post));
+
+        List<PostDto.MyCommentResponse> content = commentPage.getContent().stream()
+                .map(comment -> {
+                    Post post = postMap.get(comment.getPostId());
+                    String postTitle = post == null || post.isDeleted() ? "삭제된 게시글" : post.getTitle();
+                    return PostDto.MyCommentResponse.builder()
+                            .id(comment.getId())
+                            .postId(comment.getPostId())
+                            .postTitle(postTitle)
+                            .content(comment.getContent())
+                            .anonymous(comment.isAnonymous())
+                            .parentId(comment.getParentId())
+                            .createdAt(comment.getCreatedAt())
+                            .build();
+                })
+                .toList();
+
+        return PostDto.MyCommentPageResponse.builder()
+                .content(content)
+                .currentPage(commentPage.getNumber())
+                .totalPages(commentPage.getTotalPages())
+                .totalElements(commentPage.getTotalElements())
+                .hasNext(commentPage.hasNext())
+                .build();
+    }
+
     // 게시글 상세 조회
     @Transactional
     public PostDto.DetailResponse getPost(String postId, String userId, boolean increaseView, String sessionId) {

@@ -44,6 +44,26 @@ public class PostController {
         return ResponseEntity.ok(result);
     }
 
+    @Operation(summary = "내 게시글 목록 조회")
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/me")
+    public ResponseEntity<PostDto.PageResponse> getMyPosts(
+            @AuthenticationPrincipal String userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(postService.getMyPosts(userId, page, size));
+    }
+
+    @Operation(summary = "내 댓글 목록 조회")
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/comments/me")
+    public ResponseEntity<PostDto.MyCommentPageResponse> getMyComments(
+            @AuthenticationPrincipal String userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(postService.getMyComments(userId, page, size));
+    }
+
     // 게시글 작성 (로그인 필요)
     @Operation(summary = "게시글 작성")
     @SecurityRequirement(name = "bearerAuth")

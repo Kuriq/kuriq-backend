@@ -28,4 +28,10 @@ public class UserStatsResponse {
     // roadmaps 테이블에서 is_completed = true 카운트
     @Schema(description = "완료한 로드맵 수", example = "2")
     private long completedRoadmapCount;
+
+    @Schema(description = "작성한 커뮤니티 글 수", example = "8")
+    private long totalCommunityPosts;
+
+    @Schema(description = "작성한 커뮤니티 댓글 수", example = "14")
+    private long totalCommunityComments;
 }

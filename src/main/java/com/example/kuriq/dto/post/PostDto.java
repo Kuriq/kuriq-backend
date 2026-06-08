@@ -176,4 +176,26 @@ public class PostDto {
         private boolean liked;   // 현재 좋아요 상태
         private int likeCount;   // 변경된 좋아요 수
     }
+
+    @Getter
+    @Builder
+    public static class MyCommentPageResponse {
+        private List<MyCommentResponse> content;
+        private int currentPage;
+        private int totalPages;
+        private long totalElements;
+        private boolean hasNext;
+    }
+
+    @Getter
+    @Builder
+    public static class MyCommentResponse {
+        private String id;
+        private String postId;
+        private String postTitle;
+        private String content;
+        private boolean anonymous;
+        private String parentId;
+        private LocalDateTime createdAt;
+    }
 }

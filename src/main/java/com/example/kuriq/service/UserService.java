@@ -2,6 +2,7 @@ package com.example.kuriq.service;
 
 import com.example.kuriq.dto.notification.request.NotificationUpdateRequest;
 import com.example.kuriq.dto.notification.response.NotificationResponse;
+import com.example.kuriq.dto.user.request.UserProfileUpdateRequest;
 import com.example.kuriq.dto.user.response.CategoryStatsResponse;
 import com.example.kuriq.dto.user.response.LearningHistoryResponse;
 import com.example.kuriq.dto.user.response.SocialAccountResponse;
@@ -13,6 +14,8 @@ import com.example.kuriq.entity.roadmap.LearningHistory;
 import com.example.kuriq.entity.user.SocialAccount;
 import com.example.kuriq.entity.user.User;
 import com.example.kuriq.repository.notification.NotificationSettingRepository;
+import com.example.kuriq.repository.post.PostCommentRepository;
+import com.example.kuriq.repository.post.PostRepository;
 import com.example.kuriq.repository.notification.UnsubscribeTokenRepository;
 import com.example.kuriq.repository.roadmap.CourseRepository;
 import com.example.kuriq.repository.roadmap.LearningHistoryRepository;
@@ -47,12 +50,21 @@ public class UserService {
     private final LearningHistoryRepository learningHistoryRepository;
     private final CourseRepository courseRepository;
     private final RoadmapRepository roadmapRepository;
+    private final PostRepository postRepository;
+    private final PostCommentRepository postCommentRepository;
 
     // 프로필 조회
     public User getUser(String userId) {
         return userRepository.findById(userId)
                 .filter(u -> !u.getIsDeleted())
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다"));
+    }
+
+    @Transactional
+    public User updateProfile(String userId, UserProfileUpdateRequest req) {
+        User user = getUser(userId);
+        user.updateProfile(req.getName(), req.getProfileIcon(), req.getProfileColor());
+        return user;
     }
 
     // 소셜 계정 목록 조회
@@ -187,11 +199,16 @@ public class UserService {
         // roadmaps 테이블에서 is_completed = true 카운트
         long completedRoadmaps = roadmapRepository.countByUserIdAndIsCompletedTrue(userId);
 
+        long totalCommunityPosts = postRepository.countByUserIdAndIsDeletedFalse(userId);
+        long totalCommunityComments = postCommentRepository.countByUserIdAndIsDeletedFalse(userId);
+
         return UserStatsResponse.builder()
                 .totalCompletedCourses(totalCourses)
                 .totalLearningHours(totalHours)
                 .streakDays(streakDays)
                 .completedRoadmapCount(completedRoadmaps)
+                .totalCommunityPosts(totalCommunityPosts)
+                .totalCommunityComments(totalCommunityComments)
                 .build();
     }
 

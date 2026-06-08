@@ -5,6 +5,7 @@ import com.example.kuriq.dto.course.response.NextCourseResponse;
 import com.example.kuriq.dto.notification.request.NotificationUpdateRequest;
 import com.example.kuriq.dto.notification.response.NotificationResponse;
 import com.example.kuriq.dto.user.request.DeleteAccountRequest;
+import com.example.kuriq.dto.user.request.UserProfileUpdateRequest;
 import com.example.kuriq.dto.user.response.*;
 import com.example.kuriq.service.RecommendationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,6 +38,15 @@ public class UserController {
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getProfile(@AuthenticationPrincipal String userId) {
         return ResponseEntity.ok(UserResponse.from(userService.getUser(userId)));
+    }
+
+    @Operation(summary = "내 정보 수정")
+    @SecurityRequirement(name = "bearerAuth")
+    @PutMapping("/me")
+    public ResponseEntity<UserResponse> updateProfile(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody UserProfileUpdateRequest req) {
+        return ResponseEntity.ok(UserResponse.from(userService.updateProfile(userId, req)));
     }
 
     @Operation(summary = "회원 탈퇴")

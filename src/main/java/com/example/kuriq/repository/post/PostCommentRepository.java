@@ -1,6 +1,8 @@
 package com.example.kuriq.repository.post;
 
 import com.example.kuriq.entity.post.PostComment;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -13,4 +15,8 @@ public interface PostCommentRepository extends JpaRepository<PostComment, String
 
     // 단건 조회 — 수정/삭제 작업용
     Optional<PostComment> findByIdAndIsDeletedFalse(String id);
+
+    long countByUserIdAndIsDeletedFalse(String userId);
+
+    Page<PostComment> findByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(String userId, Pageable pageable);
 }
