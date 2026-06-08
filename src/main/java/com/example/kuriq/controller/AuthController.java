@@ -92,7 +92,7 @@ public class AuthController {
     private void setRefreshCookie(HttpServletResponse res, String token) {
         Cookie c = new Cookie(REFRESH_COOKIE, token);
         c.setHttpOnly(true);
-        c.setSecure(true);     // HTTPS only
+        c.setSecure(false);     // HTTP 허용
         c.setPath("/api/v1/auth");
         c.setMaxAge(COOKIE_MAX_AGE);
         res.addCookie(c);
@@ -102,7 +102,7 @@ public class AuthController {
     private void clearRefreshCookie(HttpServletResponse res) {
         Cookie c = new Cookie(REFRESH_COOKIE, "");
         c.setHttpOnly(true);
-        c.setSecure(true);
+        c.setSecure(false);
         c.setPath("/api/v1/auth");
         c.setMaxAge(0);
         res.addCookie(c);
