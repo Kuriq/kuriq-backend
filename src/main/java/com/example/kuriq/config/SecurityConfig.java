@@ -77,7 +77,8 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of("http://localhost:5173",
-                                        "https://kuriq-frontend.vercel.app"
+                                        "https://kuriq-frontend.vercel.app",
+                                         "http://210.104.76.92"
                                         ));
         config.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
