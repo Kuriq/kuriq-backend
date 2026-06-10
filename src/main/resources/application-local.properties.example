@@ -23,6 +23,14 @@ jwt.refresh-token-expiry=1209600000
 ai.service.base-url=http://localhost:8000
 internal.api-key=dev-secret
 
+# OAuth (set the exact callback URIs you registered with each provider if you use social login)
+oauth.kakao.redirect-uri=
+oauth.google.redirect-uri=
+oauth.naver.redirect-uri=
+
+# Frontend CORS
+app.cors.allowed-origins=http://localhost:5173,http://localhost:5174
+
 # Kakao Local API
 kakao.local.rest-api-key=${KAKAO_LOCAL_REST_API_KEY:}
 kakao.local.base-url=${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com}
