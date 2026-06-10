@@ -6,39 +6,66 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import org.springframework.data.domain.Pageable;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * 학습 이력(LearningHistory) 저장소.
- *
- * 역할:
- * - 사용자의 강좌 이수 기록 저장 및 조회
- * - 마이페이지 통계 및 학습 분석 데이터 제공
- *
- * ERD 기준:
- * - LearningHistory는 “사용자가 실제로 학습을 완료한 기록”을 저장하는 로그 테이블
- * - RoadmapItem(계획)과 달리, 실제 수행된 학습 데이터를 의미
- *
- * 주요 사용처:
- * - 마이페이지 통계 (이수 개수, 총 학습 시간 등)
- * - 학습 패턴 분석 (연속 학습 일수, 활동 여부)
- * - 리마인드 알림 기준 데이터
- */
+// 학습 이력(LearningHistory) 저장
 public interface LearningHistoryRepository extends JpaRepository<LearningHistory, String> {
 
-    // 사용자의 학습 이력을 최신순으로 조회
-    // 사용처: 마이페이지 최근 학습 기록 리스트
+    // 사용자 이력 최신순 전체 조회
+    // 연속 학습일 계산할 때 completedAt 날짜 뽑으려고 씀
     List<LearningHistory> findByUserIdOrderByCompletedAtDesc(String userId);
 
-    // 사용자의 학습 이력을 페이징하여 최신순으로 조회
-    // 사용처: 무한 스크롤 / 페이지 기반 학습 기록 조회
+    // 사용자 이력 최신순 페이징 조회
+    // GET /api/v1/users/me/history 페이지네이션용
     List<LearningHistory> findByUserIdOrderByCompletedAtDesc(String userId, Pageable pageable);
 
-    // 사용자가 이수한 강좌의 총 개수를 조회
-    // 사용처: 마이페이지 통계 (총 이수 강좌 수)
+    // 이수한 강좌 총 개수
+    // 마이페이지 통계 - 이수 강좌 수
     long countByUserId(String userId);
 
-    // 사용자가 특정 강좌를 이미 이수했는지 확인
-    // 사용처: 중복 학습 이력 방지, 동일 강좌 재추천 방지
+    // 특정 강좌 이수 여부 확인
+    // 중복 이력 방지용
     boolean existsByUserIdAndCourseId(String userId, String courseId);
+
+    // 이수 강좌들의 estimated_hours 합산
+    // courses 테이블 JOIN해서 SUM
+    // COALESCE: 이력 없으면 SUM이 null → 0으로 대체
+    @Query(value = """
+        SELECT COALESCE(SUM(c.estimated_hours), 0)
+        FROM learning_history h
+        JOIN courses c ON c.id = h.course_id
+        WHERE h.user_id = :userId
+        """, nativeQuery = true)
+    BigDecimal sumEstimatedHoursByUserId(@Param("userId") String userId);
+
+    // 카테고리별 이수 강좌 수 집계
+    // 마이페이지 분야별 학습 현황용
+    // category null인 강좌는 제외하고 집계
+    @Query(value = """
+        SELECT c.category, COUNT(h.id)
+        FROM learning_history h
+        JOIN courses c ON c.id = h.course_id
+        WHERE h.user_id = :userId
+          AND c.category IS NOT NULL
+        GROUP BY c.category
+        ORDER BY COUNT(h.id) DESC
+        """, nativeQuery = true)
+    List<Object[]> countByCategoryForUser(@Param("userId") String userId);
+
+    // courseId 목록으로 이력 배치 조회
+    List<LearningHistory> findByUserIdAndCourseIdIn(String userId, List<String> courseIds);
+
+    // 뱃지 스트릭 계산용
+    // BadgeService.calculateStreak() 에서 KST 날짜로 변환 후 연속 학습일 역산
+    // 전체 completedAt 내림차순 반환 (엔티티가 아닌 LocalDateTime 만 조회해 불필요한 컬럼 로드 방지)
+    @Query("""
+        SELECT h.completedAt
+        FROM LearningHistory h
+        WHERE h.userId = :userId
+        ORDER BY h.completedAt DESC
+        """)
+    List<LocalDateTime> findCompletedAtByUserIdOrderByDesc(@Param("userId") String userId);
 }

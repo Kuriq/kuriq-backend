@@ -16,7 +16,7 @@ public class StudySpaceResponse {
     @Schema(description = "공간 이름", example = "강남구립 논현도서관")
     private String name;
 
-    // LIBRARY / LIFELONG_LEARNING / FIFTY_PLUS / CAFE 중 하나
+    // LIBRARY / LIFELONG_LEARNING / FIFTY_PLUS / YOUTH_CENTER / CAFE 중 하나
     @Schema(description = "공간 유형", example = "LIBRARY")
     private String type;
 

@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
         name = "study_spaces",
         indexes = {
                 @Index(name = "idx_spaces_location", columnList = "latitude, longitude"),
-                @Index(name = "idx_spaces_type'", columnList = "type"),
+                @Index(name = "idx_spaces_type", columnList = "type"),
                 @Index(name = "idx_spaces_active", columnList = "isActive"), // TODO: DB 컬럼명으로 교체 고려
         }
 )
@@ -82,6 +82,7 @@ public class StudySpace {
         LIBRARY,
         LIFELONG_LEARNING,
         FIFTY_PLUS,
+        YOUTH_CENTER,
         CAFE
     }
 }

@@ -12,20 +12,9 @@ import java.util.List;
 /**
  * 로드맵 상세 응답 DTO.
  *
- * API:
- * - GET /api/v1/roadmap/{roadmapId}
- *
- * 역할:
  * - 하나의 로드맵에 대한 전체 학습 구조를 계층 형태로 반환
  * - 프론트에서 대시보드(주차별 학습 계획 + 진행률)를 바로 렌더링할 수 있도록 설계
  *
- * 구조:
- * RoadmapResponse
- *   └── List<WeekResponse> (주차 단위 — RoadmapWeek 기반)
- *         └── List<RoadmapItemResponse> (강좌 단위 — RoadmapItem 기반)
- *               └── CourseResponse (강좌 상세 정보)
- *
- * 특징:
  * - 계획(Week, Item) + 상태(progress, completed) + 메타데이터를 함께 제공
  * - 추가 API 호출 없이 화면 구성 가능 (API 최적화)
  *
@@ -40,6 +29,8 @@ import java.util.List;
 public class RoadmapResponse {
 
     private String id;  // 로드맵 id
+
+    private String title;  // 간략화된 로드맵 제목
 
     private String goal;  // 사용자의 학습 목표
 
@@ -179,16 +170,12 @@ public class RoadmapResponse {
              * Entity → DTO 변환 메서드
              *
              * Course 엔티티를 클라이언트 응답용 DTO로 변환한다.
-             *
-             * 사용처:
-             * - RoadmapItemResponse.from()
-             * - 강좌 목록 API 응답
              */
             public static CourseResponse from(Course course) {
                 return CourseResponse.builder()
                         .id(course.getId())
                         .title(course.getTitle())
-                        .platform(course.getPlatform())
+                        .platform(course.getPlatform().name())
                         .institution(course.getInstitution())
                         .category(course.getCategory())
                         .difficulty(course.getDifficulty())

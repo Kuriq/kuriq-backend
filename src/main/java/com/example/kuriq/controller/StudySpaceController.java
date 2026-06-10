@@ -1,6 +1,7 @@
 package com.example.kuriq.controller;
 
 import com.example.kuriq.dto.space.response.StudySpaceResponse;
+import com.example.kuriq.entity.space.StudySpace;
 import com.example.kuriq.service.StudySpaceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -32,8 +33,7 @@ public class StudySpaceController {
     // 현재 위치 기반으로 주변 학습 공간을 거리순으로 최대 20개 반환
     @Operation(
             summary = "주변 학습 공간 조회",
-            description = "현재 위치(위도/경도) 기준 반경 내 학습 공간을 거리순으로 반환합니다. " +
-                    "공공 공간(도서관/평생학습관/50플러스)이 3개 미만이면 카페를 보조로 추가합니다. 최대 20개."
+            description = "현재 위치(위도/경도) 기준 반경 내 학습 공간을 거리순으로 반환합니다. 최대 20개."
     )
     @GetMapping("/nearby")
     public ResponseEntity<List<StudySpaceResponse>> getNearbySpaces(
@@ -43,12 +43,15 @@ public class StudySpaceController {
             @Parameter(description = "현재 위치 경도", example = "127.0473", required = true)
             @RequestParam double lng,
 
-            @Parameter(description = "검색 반경(m). 기본 2000, 최대 5000", example = "2000")
+            @Parameter(description = "검색 반경(m). 기본 2000, 최대 10000", example = "2000")
             @RequestParam(required = false) @Min(value = 1, message = "반경은 1m 이상이어야 합니다") Integer radius,
+
+            @Parameter(description = "공간 유형 필터(optional): LIBRARY, LIFELONG_LEARNING, FIFTY_PLUS, YOUTH_CENTER, CAFE")
+            @RequestParam(required = false) StudySpace.SpaceType type,
 
             // JWT 인증에서 추출한 userId — 인증 확인 용도 (실제 조회에는 미사용)
             @AuthenticationPrincipal String userId
     ) {
-        return ResponseEntity.ok(studySpaceService.getNearbySpaces(lat, lng, radius));
+        return ResponseEntity.ok(studySpaceService.getNearbySpaces(lat, lng, radius, type));
     }
 }

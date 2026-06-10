@@ -3,16 +3,13 @@ package com.example.kuriq.service;
 import com.example.kuriq.dto.user.request.LoginRequest;
 import com.example.kuriq.dto.user.request.SignupRequest;
 import com.example.kuriq.entity.notification.NotificationSetting;
-import com.example.kuriq.entity.user.LoginAttempt;
-import com.example.kuriq.entity.user.PasswordResetToken;
-import com.example.kuriq.entity.user.RefreshToken;
-import com.example.kuriq.entity.user.User;
+import com.example.kuriq.entity.user.*;
 import com.example.kuriq.repository.notification.NotificationSettingRepository;
-import com.example.kuriq.repository.user.LoginAttemptRepository;
-import com.example.kuriq.repository.user.PasswordResetTokenRepository;
-import com.example.kuriq.repository.user.RefreshTokenRepository;
-import com.example.kuriq.repository.user.UserRepository;
+import com.example.kuriq.repository.user.*;
 import com.example.kuriq.security.JwtProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.*;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,9 +17,15 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.Map;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 
 @Slf4j
 @Service
@@ -31,13 +34,46 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
+    private final StringRedisTemplate redisTemplate; // Redis 조작 도구 (RefreshTokenRepository 대체)
     private final LoginAttemptRepository loginAttemptRepository;
     private final JwtProvider jwtProvider;
     private final PasswordEncoder passwordEncoder;
     private final NotificationSettingRepository notificationSettingRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailService emailService;  // 비번 재설정 시 이메일 발송 필드
+    private final SocialAccountRepository socialAccountRepository;  // 소셜 계정 연동 정보 저장/조회
+    private final RestTemplate restTemplate = new RestTemplate();   // 카카오 API 호출용 HTTP 클라이언트
+
+
+    // 카카오
+    @Value("${oauth.kakao.client-id}")
+    private String kakaoClientId;      // 카카오 앱 REST API 키 (application.properties에서 주입)
+
+    @Value("${oauth.kakao.redirect-uri}")
+    private String kakaoRedirectUri;   // 카카오 콘솔에 등록한 Redirect URI (application.properties에서 주입)
+
+    @Value("${oauth.kakao.client-secret}")
+    private String kakaoClientSecret;   // 카카오 클라이언트 시크릿 (토큰 요청 시 보안 검증용)
+
+    // 구글
+    @Value("${oauth.google.client-id}")
+    private String googleClientId;      // 구글 OAuth 클라이언트 ID
+
+    @Value("${oauth.google.client-secret}")
+    private String googleClientSecret;  // 구글 OAuth 클라이언트 시크릿
+
+    @Value("${oauth.google.redirect-uri}")
+    private String googleRedirectUri;   // 구글 콘솔에 등록한 Redirect URI
+
+    // 네이버
+    @Value("${oauth.naver.client-id}")
+    private String naverClientId;
+
+    @Value("${oauth.naver.client-secret}")
+    private String naverClientSecret;
+
+    @Value("${oauth.naver.redirect-uri}")
+    private String naverRedirectUri;
 
     // 회원가입
     public String signup(SignupRequest req) {
@@ -117,13 +153,18 @@ public class AuthService {
 
     // Refresh Token으로 토큰 재발급
     public String[] refresh(String rawToken) {
-        RefreshToken refreshToken = refreshTokenRepository
-                .findByTokenHashAndIsRevokedFalse(sha256(rawToken))
-                .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 토큰입니다. 다시 로그인해 주세요."));
+        String key = "refresh:" + sha256(rawToken);
 
-        refreshToken.revoke();
+        // Redis에서 userId 조회 (없으면 만료됐거나 로그아웃된 토큰)
+        String userId = redisTemplate.opsForValue().get(key);
+        if (userId == null) {
+            throw new IllegalArgumentException("유효하지 않은 토큰입니다. 다시 로그인해 주세요.");
+        }
 
-        User user = userRepository.findById(refreshToken.getUserId())
+        // 사용된 토큰은 즉시 삭제 (재사용 방지)
+        redisTemplate.delete(key);
+
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
         String newAccessToken = jwtProvider.generateAccessToken(user.getId());
@@ -136,19 +177,17 @@ public class AuthService {
 
     // 로그아웃
     public void logout(String rawToken) {
-        refreshTokenRepository
-                .findByTokenHashAndIsRevokedFalse(sha256(rawToken))
-                .ifPresent(RefreshToken::revoke);
+        String key = "refresh:" + sha256(rawToken);
+        redisTemplate.delete(key); // 키 삭제 => 토큰 무효화
     }
 
-    // Refresh Token 원문을 해시로 바꿔 DB에 저장
+    // Refresh Token을 해시로 변환 후 Redis에 저장
     private void saveRefreshToken(String userId, String rawToken) {
-        LocalDateTime expiresAt = LocalDateTime.now()
-                .plusSeconds(jwtProvider.getRefreshTokenExpiryMs() / 1000);
+        String key = "refresh:" + sha256(rawToken);
+        long ttlSeconds = jwtProvider.getRefreshTokenExpiryMs() / 1000; // ms → 초 변환
 
-        refreshTokenRepository.save(
-                RefreshToken.create(userId, sha256(rawToken), expiresAt)
-        );
+        // 명령어: SET key userId EX ttlSeconds (TTL 지나면 Redis가 자동 삭제)
+        redisTemplate.opsForValue().set(key, userId, Duration.ofSeconds(ttlSeconds));
     }
 
     // SHA-256 해시 변환
@@ -208,4 +247,240 @@ public class AuthService {
         user.changePassword(passwordEncoder.encode(newPassword));  // passwordEncoder로 암호화된 새 비밀번호를 받아 교체
         resetToken.markUsed();  // 재사용 방지
     }
+
+    // 소셜 로그인 인증 URL 생성
+    // 프론트가 이 URL로 리다이렉트하면 카카오 로그인 페이지가 뜸
+    public String getSocialAuthorizationUrl(String provider) {
+        return switch (provider.toLowerCase()) {
+            case "kakao" -> "https://kauth.kakao.com/oauth/authorize"
+                    + "?client_id=" + kakaoClientId          // 카카오 앱 REST API 키
+                    + "&redirect_uri=" + kakaoRedirectUri    // 카카오 콘솔에 등록한 Redirect URI
+                    + "&response_type=code"                 // 인증 코드 방식
+                    + "&state=kakao";  // 콜백에서 provider 구분용
+
+            case "google" -> "https://accounts.google.com/o/oauth2/v2/auth"
+                    + "?client_id=" + googleClientId
+                    + "&redirect_uri=" + googleRedirectUri
+                    + "&response_type=code"
+                    + "&scope=email%20profile" // 이메일이랑 프로필 정보 요청
+                    + "&state=google";  // 콜백에서 provider 구분용
+
+            case "naver" -> "https://nid.naver.com/oauth2.0/authorize"
+                    + "?client_id=" + naverClientId
+                    + "&redirect_uri=" + naverRedirectUri
+                    + "&response_type=code"
+                    + "&state=naver";
+            default -> throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
+        };
+    }
+
+    // 소셜 로그인 메인 로직
+    public String[] socialLogin(String providerStr, String code) {
+        SocialAccount.Provider provider = parseProvider(providerStr); // provider 문자열 → enum 변환
+
+        // 1단계: provider별로 accessToken 및 사용자 정보 조회
+        String socialId;
+        String email;
+        String name;
+
+        if (provider == SocialAccount.Provider.KAKAO) {
+            String accessToken = getKakaoAccessToken(code);
+            Map<String, Object> userInfo = getKakaoUserInfo(accessToken);
+            socialId = String.valueOf(userInfo.get("id"));  // 카카오 고유 사용자 ID
+            Map<String, Object> kakaoAccount = (Map<String, Object>) userInfo.get("kakao_account");
+            email = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;  // 이메일 미동의 시 null
+            Map<String, Object> profile = kakaoAccount != null ? (Map<String, Object>) kakaoAccount.get("profile") : null;
+            name = profile != null ? (String) profile.get("nickname") : "카카오 사용자";  // 닉네임 없으면 기본값
+
+        } else if (provider == SocialAccount.Provider.GOOGLE) {
+            String accessToken = getGoogleAccessToken(code);
+            Map<String, Object> userInfo = getGoogleUserInfo(accessToken);
+            socialId = String.valueOf(userInfo.get("id"));   // 구글 고유 사용자 ID
+            email = (String) userInfo.get("email");          // 구글은 기본으로 이메일 제공
+            name = (String) userInfo.get("name");            // 구글 사용자 이름
+            if (name == null) name = "구글 사용자";
+
+        } else if (provider == SocialAccount.Provider.NAVER) {
+            String accessToken = getNaverAccessToken(code);
+            Map<String, Object> userInfo = getNaverUserInfo(accessToken);
+            // 네이버 응답 구조: { response: { id, email, name, ... } }
+            Map<String, Object> naverResponse = (Map<String, Object>) userInfo.get("response");
+            if (naverResponse == null) throw new RuntimeException("네이버 사용자 정보 조회 실패");
+            socialId = (String) naverResponse.get("id");
+            email    = (String) naverResponse.get("email");
+            name     = (String) naverResponse.get("name");
+            if (name == null) name = "네이버 사용자";
+
+        } else {
+            throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + providerStr);
+        }
+
+        // 2단계: social_accounts 테이블에서 이미 연동된 계정인지 확인
+        SocialAccount existing = socialAccountRepository
+                .findByProviderAndSocialId(provider, socialId)
+                .orElse(null);
+
+        String userId;
+        if (existing != null) {
+            // 기존 소셜 계정 → 연결된 userId로 바로 로그인
+            userId = existing.getUserId();
+        } else {
+            // 신규 계정 → 동일 이메일로 가입된 로컬 계정이 있는지 먼저 확인
+            User user = (email != null)
+                    ? userRepository.findByEmailAndIsDeletedFalse(email).orElse(null)
+                    : null;
+
+            if (user == null) {
+                // 완전 새 유저 생성 (소셜 전용 계정은 password = null)
+                User.AuthProvider authProvider = switch (provider) {
+                    case KAKAO  -> User.AuthProvider.KAKAO;
+                    case GOOGLE -> User.AuthProvider.GOOGLE;
+                    case NAVER  -> User.AuthProvider.NAVER;
+                };
+
+                user = User.builder()
+                        .email(email)
+                        .password(null)                  // 소셜 전용 계정은 비밀번호 없음
+                        .name(name)
+                        .authProvider(authProvider)
+                        .isDeleted(false)
+                        .build();
+                userRepository.save(user);
+                notificationSettingRepository.save(NotificationSetting.createDefault(user.getId()));  // 알림 설정 기본값 생성
+            }
+
+            // social_accounts 테이블에 카카오 계정 연동 정보 저장
+            socialAccountRepository.save(
+                    SocialAccount.create(user.getId(), provider, socialId, email)
+            );
+            userId = user.getId();
+        }
+
+        // 4단계: JWT 발급
+        String accessToken = jwtProvider.generateAccessToken(userId);
+        String refreshToken = jwtProvider.generateRefreshToken(userId);
+        saveRefreshToken(userId, refreshToken);  // refreshToken은 해시로 DB 저장
+
+        return new String[]{accessToken, refreshToken};
+    }
+
+    // 카카오 인증 서버에 code를 보내 accessToken 교환
+    private String getKakaoAccessToken(String code) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);  // 카카오 API는 form 형식 요구
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "authorization_code");  // 인증 코드 방식 고정값
+        body.add("client_id", kakaoClientId);          // 카카오 앱 REST API 키
+        body.add("redirect_uri", kakaoRedirectUri);    // 콘솔에 등록한 URI와 반드시 동일해야 함
+        body.add("code", code);                        // 프론트에서 받아온 인증 코드
+        body.add("client_secret", kakaoClientSecret);  // 클라이언트 시크릿 추가 (보안 강화)
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                "https://kauth.kakao.com/oauth/token", request, Map.class);
+
+        if (response.getBody() == null || !response.getBody().containsKey("access_token")) {
+            throw new RuntimeException("카카오 토큰 발급 실패");
+        }
+        return (String) response.getBody().get("access_token");
+    }
+
+    // 카카오 API 서버에 accessToken을 보내 사용자 정보 조회
+    private Map<String, Object> getKakaoUserInfo(String kakaoAccessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(kakaoAccessToken);
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "https://kapi.kakao.com/v2/user/me", HttpMethod.GET, request, Map.class);
+
+        if (response.getBody() == null) {
+            throw new RuntimeException("카카오 사용자 정보 조회 실패");
+        }
+        return response.getBody();
+    }
+
+    // 구글 code -> accessToken 교환
+    private String getGoogleAccessToken(String code) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "authorization_code");    // 인증 코드 방식 고정값
+        body.add("client_id", googleClientId);           // 구글 클라이언트 ID
+        body.add("client_secret", googleClientSecret);   // 구글 클라이언트 시크릿
+        body.add("redirect_uri", googleRedirectUri);     // 콘솔에 등록한 URI와 반드시 동일해야 함
+        body.add("code", code);                          // 프론트에서 받아온 인증 코드
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                "https://oauth2.googleapis.com/token", request, Map.class);
+
+        if (response.getBody() == null || !response.getBody().containsKey("access_token")) {
+            throw new RuntimeException("구글 토큰 발급 실패");
+        }
+        return (String) response.getBody().get("access_token");
+    }
+
+    // 구글 accessToken -> 사용자 정보 조회
+    private Map<String, Object> getGoogleUserInfo(String googleAccessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(googleAccessToken);
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "https://www.googleapis.com/oauth2/v2/userinfo", HttpMethod.GET, request, Map.class);
+
+        if (response.getBody() == null) {
+            throw new RuntimeException("구글 사용자 정보 조회 실패");
+        }
+        return response.getBody();
+    }
+
+    private String getNaverAccessToken(String code) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "authorization_code");
+        body.add("client_id", naverClientId);
+        body.add("client_secret", naverClientSecret);
+        body.add("redirect_uri", naverRedirectUri);
+        body.add("code", code);
+        body.add("state", "naver");
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                "https://nid.naver.com/oauth2.0/token", request, Map.class);
+
+        if (response.getBody() == null || !response.getBody().containsKey("access_token")) {
+            throw new RuntimeException("네이버 토큰 발급 실패");
+        }
+        return (String) response.getBody().get("access_token");
+    }
+
+    private Map<String, Object> getNaverUserInfo(String naverAccessToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(naverAccessToken);
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "https://openapi.naver.com/v1/nid/me", HttpMethod.GET, request, Map.class);
+
+        if (response.getBody() == null) throw new RuntimeException("네이버 사용자 정보 조회 실패");
+        return response.getBody();
+    }
+
+    // provider 문자열 -> SocialAccount.Provider enum 변환
+    // "kakao" -> KAKAO, 지원하지 않는 값이면 예외 발생
+    private SocialAccount.Provider parseProvider(String provider) {
+        try {
+            return SocialAccount.Provider.valueOf(provider.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
+        }
+    }
+
+
 }

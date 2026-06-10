@@ -46,6 +46,14 @@ public class User {
     @Column(nullable = false, length = 20)  // null 할당 안한다는 의미
     private String name;
 
+    @Column(length = 16)
+    @Builder.Default
+    private String profileIcon = "🦉";
+
+    @Column(length = 7)
+    @Builder.Default
+    private String profileColor = "#3B6B4A";
+
     // 사용자 연령층
     @Enumerated(EnumType.STRING)
     @Column(length = 10)
@@ -111,10 +119,18 @@ public class User {
         this.name = name;
         this.isDeleted = false;
         this.deletedAt = null;
+        if (this.profileIcon == null || this.profileIcon.isBlank()) this.profileIcon = "🦉";
+        if (this.profileColor == null || this.profileColor.isBlank()) this.profileColor = "#3B6B4A";
     }
 
     // 비밀번호 변경
     public void changePassword(String encodedPassword) {
         this.password = encodedPassword;
+    }
+
+    public void updateProfile(String name, String profileIcon, String profileColor) {
+        this.name = name;
+        this.profileIcon = profileIcon;
+        this.profileColor = profileColor;
     }
 }

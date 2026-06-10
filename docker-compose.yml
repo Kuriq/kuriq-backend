@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: kuriq-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: kuriq
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: kuriq-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: kuriq-chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    restart: unless-stopped
+
+  ai:
+    image: hphp11/kuriq-ai:latest
+    container_name: kuriq-ai
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      INTERNAL_SECRET_KEY: ${INTERNAL_SECRET_KEY}
+      LLM_MODEL: gpt-4o-mini
+      LLM_TIMEOUT: 30
+      RAG_TOP_K: 20
+      CHROMA_MODE: server
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+    depends_on:
+      - chromadb
+    restart: unless-stopped
+
+  backend:
+    image: hphp11/kuriq-backend:latest
+    container_name: kuriq-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/kuriq?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TOKEN_EXPIRY: 3600000
+      JWT_REFRESH_TOKEN_EXPIRY: 1209600000
+      SPRING_MAIL_USERNAME: ${MAIL_USERNAME}
+      SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD}
+      AI_SERVICE_BASE_URL: http://ai:8000
+      INTERNAL_API_KEY: ${INTERNAL_SECRET_KEY}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ai:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    image: hphp11/kuriq-frontend:latest
+    container_name: kuriq-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:
+  chroma-data:
