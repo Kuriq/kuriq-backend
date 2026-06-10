@@ -47,6 +47,15 @@ public class SecurityConfig {
                                 "/api/v1/auth/password-reset/request",
                                 "/api/v1/auth/password-reset/confirm"
                         ).permitAll()
+
+                        // 소셜 로그인 및 강좌 검색은 GET 메서드로 인증 없이 허용
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/auth/social/**",
+                                "/api/v1/analytics/courses/popular",
+                                "/api/v1/courses/search",
+                                "/api/v1/courses/**"
+                        ).permitAll()
+
                         // 알림 수신 거부는 PATCH 메서드로 별도 추가
                         .requestMatchers(HttpMethod.PATCH,
                                 "/api/v1/notifications/unsubscribe"
@@ -76,10 +85,12 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173",
-                                        "https://kuriq-frontend.vercel.app",
-                                         "http://210.104.76.92"
-                                        ));
+        config.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "https://kuriq-frontend.vercel.app",
+                "http://210.104.76.92",
+                "https://kuriq.chickenkiller.com"
+        ));
         config.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
