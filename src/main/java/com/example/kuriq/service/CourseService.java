@@ -19,7 +19,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.List;
@@ -71,6 +70,10 @@ public class CourseService {
 
             if (response == null) {
                 throw new RuntimeException("AI 서버 응답이 없습니다.");
+            }
+
+            if (response.get("totalElements").asLong() == 0) {
+                throw new RuntimeException("ChromaDB 결과 없음, MySQL fallback");
             }
 
             log.info("[CourseService] AI 서버 응답: totalElements={}", response.get("totalElements").asLong());
