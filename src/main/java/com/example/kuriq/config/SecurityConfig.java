@@ -3,6 +3,7 @@ package com.example.kuriq.config;
 import com.example.kuriq.repository.user.UserRepository;
 import com.example.kuriq.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -20,6 +21,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -29,6 +31,9 @@ public class SecurityConfig {
 
     private final JwtProvider jwtProvider;
     private final UserRepository userRepository;
+
+    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:5174}")
+    private String allowedOrigins;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -43,17 +48,19 @@ public class SecurityConfig {
                                 "/api/v1/auth/logout",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/roadmap/generate",
-                                // 비밀번호 재설정할 때 인증 없이 접근 가능하게
                                 "/api/v1/auth/password-reset/request",
-                                "/api/v1/auth/password-reset/confirm"
+                                "/api/v1/auth/password-reset/confirm",
+                                "/api/v1/auth/social/**",
+                                "/api/v1/analytics/course-click"
                         ).permitAll()
 
-                        // 소셜 로그인 및 강좌 검색은 GET 메서드로 인증 없이 허용
                         .requestMatchers(HttpMethod.GET,
                                 "/api/v1/auth/social/**",
                                 "/api/v1/analytics/courses/popular",
                                 "/api/v1/courses/search",
-                                "/api/v1/courses/**"
+                                "/api/v1/courses/**",
+                                "/api/v1/posts",
+                                "/api/v1/posts/**"
                         ).permitAll()
 
                         // 알림 수신 거부는 PATCH 메서드로 별도 추가
@@ -85,12 +92,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(
-                "http://localhost:5173",
-                "https://kuriq-frontend.vercel.app",
-                "http://210.104.76.92",
-                "https://kuriq.chickenkiller.com"
-        ));
+        config.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList());
         config.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

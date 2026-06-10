@@ -17,8 +17,8 @@ import java.util.concurrent.TimeUnit;
 public class AiClientConfig {
 
     @Bean
-    public WebClient aiWebClient(@Value("${ai.service.base-url:http://ai-service:8000}") String baseUrl,
-                                 @Value("${internal.api-key:${ai.service.internal-key:dev-internal-key}}") String internalKey) {
+    public WebClient aiWebClient(@Value("${ai.service.base-url}") String baseUrl,
+                                 @Value("${internal.api-key}") String internalKey) {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
                 .responseTimeout(Duration.ofSeconds(60))
