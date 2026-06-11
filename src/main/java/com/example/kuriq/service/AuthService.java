@@ -320,11 +320,20 @@ public class AuthService {
                 .findByProviderAndSocialId(provider, socialId)
                 .orElse(null);
 
-        String userId;
+        String userId = null;
         if (existing != null) {
-            // 기존 소셜 계정 → 연결된 userId로 바로 로그인
-            userId = existing.getUserId();
-        } else {
+            // 기존 소셜 계정 → 연결된 유저가 탈퇴했는지 확인
+            User linkedUser = userRepository.findById(existing.getUserId()).orElse(null);
+            if (linkedUser != null && linkedUser.getIsDeleted()) {
+                // 탈퇴한 유저의 소셜 계정 → 삭제 후 신규 가입 처리
+                socialAccountRepository.delete(existing);
+            } else {
+                // 정상 유저 → 바로 로그인
+                userId = existing.getUserId();
+            }
+        }
+
+        if (userId == null) {
             // 신규 계정 → 동일 이메일로 가입된 로컬 계정이 있는지 먼저 확인
             User user = (email != null)
                     ? userRepository.findByEmailAndIsDeletedFalse(email).orElse(null)
@@ -349,7 +358,7 @@ public class AuthService {
                 notificationSettingRepository.save(NotificationSetting.createDefault(user.getId()));  // 알림 설정 기본값 생성
             }
 
-            // social_accounts 테이블에 카카오 계정 연동 정보 저장
+            // social_accounts 테이블에 소셜 계정 연동 정보 저장
             socialAccountRepository.save(
                     SocialAccount.create(user.getId(), provider, socialId, email)
             );
@@ -481,6 +490,4 @@ public class AuthService {
             throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
         }
     }
-
-
 }
