@@ -1,6 +1,7 @@
 package com.example.kuriq.dto.course.response;
 
 import com.example.kuriq.entity.roadmap.Course;
+import com.example.kuriq.util.CourseCategoryResolver;
 import com.example.kuriq.util.CoursePlatformLabelResolver;
 import lombok.Builder;
 import lombok.Getter;
@@ -27,7 +28,7 @@ public class CourseResponse {
                 .title(course.getTitle())
                 .platform(CoursePlatformLabelResolver.resolvePlatform(course.getPlatform(), course.getInstitution()))
                 .institution(CoursePlatformLabelResolver.normalizeInstitution(course.getInstitution(), course.getPlatform()))
-                .category(course.getCategory())
+                .category(CourseCategoryResolver.normalizeCategory(course.getCategory()))
                 .difficulty(course.getDifficulty())
                 .durationWeeks(course.getDurationWeeks())
                 .estimatedHours(course.getEstimatedHours())

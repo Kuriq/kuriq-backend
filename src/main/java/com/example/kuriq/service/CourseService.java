@@ -6,6 +6,7 @@ import com.example.kuriq.dto.course.response.CourseSearchResponse;
 import com.example.kuriq.entity.roadmap.Course;
 import com.example.kuriq.entity.roadmap.Platform;
 import com.example.kuriq.repository.roadmap.CourseRepository;
+import com.example.kuriq.util.CourseCategoryResolver;
 import com.example.kuriq.util.CoursePlatformLabelResolver;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +24,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -120,7 +122,13 @@ public class CourseService {
             }
         }
         if (request.getDifficulty() != null && !request.getDifficulty().isBlank()) spec = spec.and(eq("difficulty", request.getDifficulty()));
-        if (request.getCategory() != null && !request.getCategory().isBlank()) spec = spec.and(eq("category", request.getCategory()));
+        if (request.getCategory() != null && !request.getCategory().isBlank()) {
+            Set<String> aliases = CourseCategoryResolver.categoryAliases(request.getCategory());
+            spec = spec.and((root, query, cb) -> cb.or(
+                    aliases.stream().map(alias -> cb.like(root.get("category"), "%" + alias + "%"))
+                            .toArray(jakarta.persistence.criteria.Predicate[]::new)
+            ));
+        }
         if (request.getHasCertificate() != null) spec = spec.and(eq("hasCertificate", request.getHasCertificate()));
         if (request.getDurationRange() != null && !request.getDurationRange().isBlank()) spec = spec.and(durationSpec(request.getDurationRange()));
 
