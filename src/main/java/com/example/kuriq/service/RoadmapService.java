@@ -63,6 +63,12 @@ public class RoadmapService {
         List<String> missingIds = new java.util.ArrayList<>();
         
         for (String courseId : courseIds) {
+            Course directCourse = findCourseByAiCourseId(courseId);
+            if (directCourse != null) {
+                courseMap.put(courseId, directCourse);
+                continue;
+            }
+
             Platform platform = extractPlatformFromCourseId(courseId);
             String platformCourseId = extractPlatformCourseId(courseId);
 
@@ -373,6 +379,31 @@ public class RoadmapService {
         }
 
         return courseId;
+    }
+
+    private Course findCourseByAiCourseId(String courseId) {
+        if (courseId == null || courseId.isBlank()) {
+            return null;
+        }
+
+        return courseRepository.findById(courseId)
+                .or(() -> extractEmbeddedUuid(courseId).flatMap(courseRepository::findById))
+                .orElse(null);
+    }
+
+    private java.util.Optional<String> extractEmbeddedUuid(String courseId) {
+        int separatorIndex = courseId.indexOf('_');
+        if (separatorIndex < 0 || separatorIndex + 1 >= courseId.length()) {
+            return java.util.Optional.empty();
+        }
+
+        String suffix = courseId.substring(separatorIndex + 1);
+        try {
+            UUID.fromString(suffix);
+            return java.util.Optional.of(suffix);
+        } catch (IllegalArgumentException ignored) {
+            return java.util.Optional.empty();
+        }
     }
 
     // 엔티티 -> 응답 DTO 변환

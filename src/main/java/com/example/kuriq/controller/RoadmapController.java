@@ -2,6 +2,7 @@ package com.example.kuriq.controller;
 
 import com.example.kuriq.dto.roadmap.request.RoadmapGenerateRequest;
 import com.example.kuriq.dto.roadmap.response.RoadmapResponse;
+import com.example.kuriq.exception.ApiException;
 import com.example.kuriq.service.RoadmapService;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -34,8 +35,9 @@ public class RoadmapController {
     public ResponseEntity<RoadmapResponse> generate(
             @Valid @RequestBody RoadmapGenerateRequest req,
             @AuthenticationPrincipal String userId) {
-
-        System.out.println("userId: " + userId);
+        if (userId == null || userId.isBlank() || "anonymousUser".equals(userId)) {
+            throw new ApiException("UNAUTHORIZED", "로그인 후 로드맵을 생성할 수 있습니다.", HttpStatus.UNAUTHORIZED);
+        }
 
         // prompt + userId를 service에 전달해서 로드맵 생성 후 반환
         return ResponseEntity.status(HttpStatus.CREATED)
