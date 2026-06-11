@@ -256,20 +256,24 @@ public class AuthService {
                     + "?client_id=" + kakaoClientId          // 카카오 앱 REST API 키
                     + "&redirect_uri=" + kakaoRedirectUri    // 카카오 콘솔에 등록한 Redirect URI
                     + "&response_type=code"                 // 인증 코드 방식
-                    + "&state=kakao";  // 콜백에서 provider 구분용
+                    + "&state=kakao"  // 콜백에서 provider 구분용
+                    + "&prompt=login";  // 매번 카카오 로그인 창 강제
 
             case "google" -> "https://accounts.google.com/o/oauth2/v2/auth"
                     + "?client_id=" + googleClientId
                     + "&redirect_uri=" + googleRedirectUri
                     + "&response_type=code"
                     + "&scope=email%20profile" // 이메일이랑 프로필 정보 요청
-                    + "&state=google";  // 콜백에서 provider 구분용
+                    + "&state=google"  // 콜백에서 provider 구분용
+                    + "&prompt=select_account";  // 매번 구글 계정 선택 창 강제
+
 
             case "naver" -> "https://nid.naver.com/oauth2.0/authorize"
                     + "?client_id=" + naverClientId
                     + "&redirect_uri=" + naverRedirectUri
                     + "&response_type=code"
-                    + "&state=naver";
+                    + "&state=naver"
+                    + "&auth_type=reauthenticate";  // 매번 네이버 로그인 창 강제
             default -> throw new IllegalArgumentException("지원하지 않는 소셜 로그인 provider: " + provider);
         };
     }
