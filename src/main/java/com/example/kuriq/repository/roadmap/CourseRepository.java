@@ -90,4 +90,8 @@ public interface CourseRepository extends JpaRepository<Course, String>, JpaSpec
 
     // 카테고리별 조회
     List<Course> findByCategoryAndIsActiveTrue(String category);
+
+    // AI 추천 실패 시 MySQL 폴백용 - 같은 카테고리에서 특정 강좌 제외하고 3개 조회
+    List<Course> findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(
+            String category, String excludeId);
 }
