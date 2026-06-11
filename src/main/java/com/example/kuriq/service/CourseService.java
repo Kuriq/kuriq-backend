@@ -6,6 +6,7 @@ import com.example.kuriq.dto.course.response.CourseSearchResponse;
 import com.example.kuriq.entity.roadmap.Course;
 import com.example.kuriq.entity.roadmap.Platform;
 import com.example.kuriq.repository.roadmap.CourseRepository;
+import com.example.kuriq.util.CoursePlatformLabelResolver;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -72,10 +73,6 @@ public class CourseService {
                 throw new RuntimeException("AI 서버 응답이 없습니다.");
             }
 
-            if (response.get("totalElements").asLong() == 0) {
-                throw new RuntimeException("ChromaDB 결과 없음, MySQL fallback");
-            }
-
             log.info("[CourseService] AI 서버 응답: totalElements={}", response.get("totalElements").asLong());
 
             // 응답 파싱
@@ -113,11 +110,9 @@ public class CourseService {
             ));
         }
         if (request.getPlatform() != null && !request.getPlatform().isBlank()) {
-            try {
-                Platform platform = Platform.valueOf(request.getPlatform().toUpperCase().replace("-", "_"));
-                spec = spec.and(eq("platform", platform));
-            } catch (IllegalArgumentException ignored) {
-                // 유효하지 않은 플랫폼 값은 무시
+            Platform platform = CoursePlatformLabelResolver.parseRequestedPlatform(request.getPlatform());
+            if (platform != null) {
+                spec = spec.and(platformSpec(platform));
             }
         }
         if (request.getDifficulty() != null && !request.getDifficulty().isBlank()) spec = spec.and(eq("difficulty", request.getDifficulty()));
@@ -132,6 +127,25 @@ public class CourseService {
 
     private Specification<Course> eq(String field, Object value) {
         return (root, query, cb) -> cb.equal(root.get(field), value);
+    }
+
+    private Specification<Course> platformSpec(Platform platform) {
+        return switch (platform) {
+            case K_MOOC -> (root, query, cb) -> cb.or(
+                    cb.equal(root.get("platform"), Platform.K_MOOC),
+                    cb.like(root.get("institution"), "K-MOOC%")
+            );
+            case KOCW -> (root, query, cb) -> cb.or(
+                    cb.equal(root.get("platform"), Platform.KOCW),
+                    cb.like(root.get("institution"), "KOCW%")
+            );
+            case SEOUL_LLL -> (root, query, cb) -> cb.or(
+                    cb.equal(root.get("platform"), Platform.SEOUL_LLL),
+                    cb.like(root.get("institution"), "서울시평생학습포털%"),
+                    cb.like(root.get("institution"), "서울시 평생학습포털%")
+            );
+            default -> eq("platform", platform);
+        };
     }
 
     private Specification<Course> durationSpec(String range) {
