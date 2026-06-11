@@ -98,6 +98,10 @@ public class UserService {
                 throw new IllegalArgumentException("비밀번호가 올바르지 않습니다");
             }
         }
+
+        // 소셜 계정 연동 정보 삭제 (탈퇴 후 재가입 시 동일 소셜 계정으로 신규 가입 가능하게)
+        socialAccountRepository.deleteByUserId(userId);
+
         user.softDelete();
     }
 
@@ -270,7 +274,7 @@ public class UserService {
         return histories.stream().map(h -> {
             Course course   = courseMap.get(h.getCourseId());
             String title    = course != null ? course.getTitle()    : "삭제된 강좌";
-            String platform = course != null ? course.getPlatform().name() : "-"; 
+            String platform = course != null ? course.getPlatform().name() : "-";
             String category = course != null ? course.getCategory() : "-";
             return LearningHistoryResponse.from(h, title, platform, category);
         }).toList();
