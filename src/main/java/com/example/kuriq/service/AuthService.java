@@ -275,6 +275,7 @@ public class AuthService {
     }
 
     // 소셜 로그인 메인 로직
+    // 반환값: [accessToken, refreshToken, isNewUser("true"/"false")]
     public String[] socialLogin(String providerStr, String code) {
         SocialAccount.Provider provider = parseProvider(providerStr); // provider 문자열 → enum 변환
 
@@ -321,12 +322,15 @@ public class AuthService {
                 .orElse(null);
 
         String userId = null;
+        boolean isNewUser = false; // 신규 가입 여부 (탈퇴 후 재가입 포함)
+
         if (existing != null) {
             // 기존 소셜 계정 → 연결된 유저가 탈퇴했는지 확인
             User linkedUser = userRepository.findById(existing.getUserId()).orElse(null);
             if (linkedUser != null && linkedUser.getIsDeleted()) {
                 // 탈퇴한 유저의 소셜 계정 → 삭제 후 신규 가입 처리
                 socialAccountRepository.delete(existing);
+                isNewUser = true;
             } else {
                 // 정상 유저 → 바로 로그인
                 userId = existing.getUserId();
@@ -356,6 +360,7 @@ public class AuthService {
                         .build();
                 userRepository.save(user);
                 notificationSettingRepository.save(NotificationSetting.createDefault(user.getId()));  // 알림 설정 기본값 생성
+                isNewUser = true; // 완전 신규 유저
             }
 
             // social_accounts 테이블에 소셜 계정 연동 정보 저장
@@ -370,7 +375,8 @@ public class AuthService {
         String refreshToken = jwtProvider.generateRefreshToken(userId);
         saveRefreshToken(userId, refreshToken);  // refreshToken은 해시로 DB 저장
 
-        return new String[]{accessToken, refreshToken};
+        // tokens[2]: 신규 가입 여부 (프론트에서 안내 메시지 표시용)
+        return new String[]{accessToken, refreshToken, String.valueOf(isNewUser)};
     }
 
     // 카카오 인증 서버에 code를 보내 accessToken 교환
