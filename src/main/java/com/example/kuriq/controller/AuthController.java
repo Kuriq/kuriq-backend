@@ -150,14 +150,15 @@ public class AuthController {
         return ResponseEntity.ok(Map.of("authorizationUrl", authorizationUrl));
     }
 
-    // 소셜 로그인 콜백 처리
+    // 소셜 로그인 콜백 처리 → 프론트엔드로 리다이렉트
     @GetMapping("/social/callback")
     public void socialCallback(
-            @RequestParam String code,
-            @RequestParam(required = false) String state,
-            HttpServletResponse httpRes) throws java.io.IOException {
+            @RequestParam String code,      // 소셜 플랫폼이 URL 파라미터로 code를 넘겨줌
+            @RequestParam(required = false) String state, // 어떤 소셜인지 구분
+            HttpServletResponse httpRes) throws IOException {
         String[] tokens = authService.socialLogin(state != null ? state : "kakao", code);
         setRefreshCookie(httpRes, tokens[1]);
-        httpRes.sendRedirect("https://kuriq.co.kr/auth/social?token=" + tokens[0]);
+        // 액세스 토큰을 쿼리 파라미터로 프론트엔드에 전달
+        httpRes.sendRedirect("https://kuriq.co.kr/auth?token=" + tokens[0]);
     }
 }
