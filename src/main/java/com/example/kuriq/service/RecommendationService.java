@@ -64,11 +64,13 @@ public class RecommendationService {
             );
         } catch (Exception e) {
             log.error("[추천] AI 서버 호출 실패: {}", e.getMessage());
-            return List.of();
+            // AI 호출 실패 시 MySQL 폴백
+            return fallbackFromMySQL(category, baseCourse.getId());
         }
 
         if (aiResponse == null || aiResponse.getCourses() == null || aiResponse.getCourses().isEmpty()) {
-            return List.of();
+            // AI 응답 없을 시 MySQL 폴백
+            return fallbackFromMySQL(category, baseCourse.getId());
         }
 
         // 4. AI 서버 응답 강좌 최대 3개를 MySQL에서 조회
@@ -125,7 +127,24 @@ public class RecommendationService {
                         .build());
             }
         }
+
+        // AI 응답이 있었지만 매칭되는 강좌가 없는 경우 MySQL 폴백
+        if (result.isEmpty()) {
+            return fallbackFromMySQL(category, baseCourse.getId());
+        }
+
         return result;
+    }
+
+    // AI 추천 실패 시 MySQL에서 같은 카테고리 강좌 3개 직접 조회
+    private List<NextCourseResponse> fallbackFromMySQL(String category, String excludeCourseId) {
+        log.info("[추천] MySQL 폴백 실행: category={}", category);
+        List<Course> courses = courseRepository
+                .findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(category, excludeCourseId);
+        return courses.stream()
+                .map(c -> NextCourseResponse.from(c,
+                        String.format("%s 분야의 추천 강좌예요!", category)))
+                .toList();
     }
 
     private Optional<RecommendationSeed> resolveSeed(String userId, String roadmapId) {
