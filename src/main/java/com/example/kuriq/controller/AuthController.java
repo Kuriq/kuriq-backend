@@ -152,6 +152,7 @@ public class AuthController {
     }
 
     // 소셜 로그인 콜백 처리 → 프론트엔드로 리다이렉트
+    // tokens[0]: accessToken, tokens[1]: refreshToken, tokens[2]: isNewUser("true"/"false")
     @GetMapping("/social/callback")
     public void socialCallback(
             @RequestParam String code,      // 소셜 플랫폼이 URL 파라미터로 code를 넘겨줌
@@ -159,7 +160,7 @@ public class AuthController {
             HttpServletResponse httpRes) throws IOException {
         String[] tokens = authService.socialLogin(state != null ? state : "kakao", code);
         setRefreshCookie(httpRes, tokens[1]);
-        // 액세스 토큰을 쿼리 파라미터로 프론트엔드에 전달
-        httpRes.sendRedirect("https://kuriq.co.kr/auth?token=" + tokens[0]);
+        // 액세스 토큰 + 신규 가입 여부를 쿼리 파라미터로 프론트엔드에 전달
+        httpRes.sendRedirect("https://kuriq.co.kr/auth?token=" + tokens[0] + "&isNewUser=" + tokens[2]);
     }
 }
