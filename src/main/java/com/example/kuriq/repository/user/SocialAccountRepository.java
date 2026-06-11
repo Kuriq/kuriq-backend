@@ -16,6 +16,5 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, St
     Optional<SocialAccount> findByProviderAndSocialId(
             SocialAccount.Provider provider, String socialId);  // provider + socialId로 유저 식별
     List<SocialAccount> findByUserId(String userId);  // 한 유저가 연결한 소셜 계정 목록 가져오기
-
+    void deleteByUserId(String userId);  // 회원 탈퇴 시 소셜 계정 연동 정보 전체 삭제
 }
-
