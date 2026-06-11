@@ -392,7 +392,7 @@ public class RoadmapService {
     }
 
     private java.util.Optional<String> extractEmbeddedUuid(String courseId) {
-        int separatorIndex = courseId.indexOf('_');
+        int separatorIndex = courseId.lastIndexOf('_');
         if (separatorIndex < 0 || separatorIndex + 1 >= courseId.length()) {
             return java.util.Optional.empty();
         }
