@@ -18,8 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -71,6 +73,7 @@ public class RecommendationService {
 
         // 4. AI 서버 응답 강좌 최대 3개를 MySQL에서 조회
         List<NextCourseResponse> result = new ArrayList<>();
+        Set<String> addedCourseIds = new HashSet<>();  // 중복 방지용
 
         for (AiClient.RecommendationAiResponse.RecommendationCourseDto recommended
                 : aiResponse.getCourses().subList(0, Math.min(3, aiResponse.getCourses().size()))) {
@@ -93,18 +96,30 @@ public class RecommendationService {
             }
 
             if (courseOpt.isPresent()) {
-                result.add(NextCourseResponse.from(courseOpt.get(), message));
+                Course course = courseOpt.get();
+                // 중복 제거
+                if (addedCourseIds.contains(course.getId())) continue;
+                addedCourseIds.add(course.getId());
+                result.add(NextCourseResponse.from(course, message));
             } else {
+                // url 없으면 표시 의미 없으므로 제외
+                String url = recommended.getUrl();
+                if (url == null || url.isBlank()) {
+                    log.warn("[추천] courses 테이블에 없고 url도 없음: {}", courseIdRaw);
+                    continue;
+                }
                 // courses 테이블에 없으면 AI 응답 데이터로 직접 구성
+                if (addedCourseIds.contains(courseIdRaw)) continue;
+                addedCourseIds.add(courseIdRaw);
                 result.add(NextCourseResponse.builder()
-                        .courseId(recommended.getCourse_id())
+                        .courseId(courseIdRaw)
                         .title(recommended.getTitle())
                         .institution(recommended.getInstitution())
                         .platform(null)
                         .category(recommended.getCategory())
                         .difficulty(null)
                         .estimatedHours(null)
-                        .url(recommended.getUrl())
+                        .url(url)
                         .hasCertificate(null)
                         .message(message)
                         .build());
