@@ -152,12 +152,12 @@ public class AuthController {
 
     // 소셜 로그인 콜백 처리
     @GetMapping("/social/callback")
-    public ResponseEntity<AuthResponse> socialCallback(
-            @RequestParam String code,      // 소셜 플랫폼이 URL 파라미터로 code를 넘겨줌
-            @RequestParam(required = false) String state, // 어떤 소셜인지 구분
-            HttpServletResponse httpRes) {
+    public void socialCallback(
+            @RequestParam String code,
+            @RequestParam(required = false) String state,
+            HttpServletResponse httpRes) throws java.io.IOException {
         String[] tokens = authService.socialLogin(state != null ? state : "kakao", code);
         setRefreshCookie(httpRes, tokens[1]);
-        return ResponseEntity.ok(AuthResponse.of(tokens[0]));
+        httpRes.sendRedirect("https://kuriq.co.kr/auth/social?token=" + tokens[0]);
     }
 }
