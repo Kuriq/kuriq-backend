@@ -73,6 +73,10 @@ public class CourseService {
                 throw new RuntimeException("AI 서버 응답이 없습니다.");
             }
 
+            if (response.get("totalElements").asLong() == 0) {
+                throw new RuntimeException("ChromaDB 결과 없음, MySQL fallback");
+            }
+
             log.info("[CourseService] AI 서버 응답: totalElements={}", response.get("totalElements").asLong());
 
             // 응답 파싱
