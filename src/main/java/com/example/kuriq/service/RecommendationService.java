@@ -50,7 +50,7 @@ public class RecommendationService {
         }
 
         // 3. AI 서버에 벡터 유사도 기반 추천 요청
-        String aiCourseId = baseCourse.getPlatform().name() + "_" + baseCourse.getPlatformCourseId();
+        String aiCourseId = baseCourse.getId();
 
         AiClient.RecommendationAiResponse aiResponse;
         try {
@@ -79,15 +79,24 @@ public class RecommendationService {
 
         for (AiClient.RecommendationAiResponse.RecommendationCourseDto recommended
                 : aiResponse.getCourses().subList(0, Math.min(3, aiResponse.getCourses().size()))) {
+            String courseIdRaw = recommended.getCourse_id();
+            String message = buildMessage(seed, recommended.getTitle());
+
+            Optional<Course> directCourseOpt = courseRepository.findById(courseIdRaw);
+            if (directCourseOpt.isPresent()) {
+                Course course = directCourseOpt.get();
+                if (addedCourseIds.contains(course.getId())) continue;
+                addedCourseIds.add(course.getId());
+                result.add(NextCourseResponse.from(course, message));
+                continue;
+            }
 
             // course_id 형식: "LLL_PORTAL_2390297" → platform + platformCourseId 분리
-            String courseIdRaw = recommended.getCourse_id();
             int lastIdx = courseIdRaw.lastIndexOf("_");
             if (lastIdx < 0) continue;
 
             String platformStr = courseIdRaw.substring(0, lastIdx);   // LLL_PORTAL
             String platformCourseId = courseIdRaw.substring(lastIdx + 1); // 2390297
-            String message = buildMessage(seed, recommended.getTitle());
 
             Optional<Course> courseOpt = Optional.empty();
             try {

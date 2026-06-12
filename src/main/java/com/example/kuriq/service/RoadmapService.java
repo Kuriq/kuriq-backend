@@ -49,7 +49,7 @@ public class RoadmapService {
                         .build());
 
         // AI 응답 courseId → 강좌 조회
-        // AI 가 반환하는 courseId 는 "K-MOOC_19921" 형식 (platform_platformCourseId)
+        // 최신 AI 는 백엔드 Course.id(UUID)를, 레거시 AI 는 platform_platformCourseId 를 반환할 수 있다.
         List<String> courseIds = ai.getWeeks().stream()
                 .flatMap(w -> w.getCourses().stream())
                 .map(AiClient.RoadmapGenerateAiResponse.CourseItemDto::getCourseId)
@@ -97,8 +97,25 @@ public class RoadmapService {
             AiClient.CourseMetadataResponse metadataResponse = aiClient.getCourseMetadata(missingIds);
             if (metadataResponse != null && metadataResponse.getCourses() != null) {
                 for (AiClient.CourseMetadataResponse.CourseMetadataDto dto : metadataResponse.getCourses()) {
-                    Platform platform = parsePlatform(dto.getPlatform());
+                    courseRepository.findById(dto.getCourseId())
+                            .ifPresent(course -> courseMap.put(dto.getCourseId(), course));
+
+                    if (courseMap.containsKey(dto.getCourseId())) {
+                        continue;
+                    }
+
+                    Platform platformFromCourseId = extractPlatformFromCourseId(dto.getCourseId());
                     String platformCourseId = extractPlatformCourseId(dto.getCourseId());
+
+                    if (platformFromCourseId == null || platformCourseId == null || platformCourseId.isBlank()) {
+                        log.error("[RoadmapService] 내부 UUID courseId 누락 또는 backfill 불가: {}", dto.getCourseId());
+                        continue;
+                    }
+
+                    Platform platform = parsePlatform(dto.getPlatform());
+                    if (platform != platformFromCourseId) {
+                        platform = platformFromCourseId;
+                    }
                     BigDecimal estimatedHours = dto.getEstimatedHours() != null
                             ? BigDecimal.valueOf(dto.getEstimatedHours())
                             : BigDecimal.ZERO;
