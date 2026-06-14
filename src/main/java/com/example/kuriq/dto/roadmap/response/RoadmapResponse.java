@@ -2,6 +2,7 @@ package com.example.kuriq.dto.roadmap.response;
 
 import com.example.kuriq.entity.roadmap.Course;
 import com.example.kuriq.entity.roadmap.RoadmapItem;
+import com.example.kuriq.util.CoursePlatformLabelResolver;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -175,8 +176,8 @@ public class RoadmapResponse {
                 return CourseResponse.builder()
                         .id(course.getId())
                         .title(course.getTitle())
-                        .platform(course.getPlatform().name())
-                        .institution(course.getInstitution())
+                        .platform(CoursePlatformLabelResolver.resolvePlatform(course.getPlatform(), course.getInstitution()))
+                        .institution(CoursePlatformLabelResolver.normalizeInstitution(course.getInstitution(), course.getPlatform()))
                         .category(course.getCategory())
                         .difficulty(course.getDifficulty())
                         .durationWeeks(course.getDurationWeeks())

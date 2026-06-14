@@ -1,6 +1,7 @@
 package com.example.kuriq.dto.course.response;
 
 import com.example.kuriq.entity.roadmap.Course;
+import com.example.kuriq.util.CoursePlatformLabelResolver;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 
@@ -45,8 +46,8 @@ public class NextCourseResponse {
         return NextCourseResponse.builder()
                 .courseId(course.getId())
                 .title(course.getTitle())
-                .institution(course.getInstitution())
-                .platform(course.getPlatform().name())
+                .institution(CoursePlatformLabelResolver.normalizeInstitution(course.getInstitution(), course.getPlatform()))
+                .platform(CoursePlatformLabelResolver.resolvePlatform(course.getPlatform(), course.getInstitution()))
                 .category(course.getCategory())
                 .difficulty(course.getDifficulty())
                 .estimatedHours(course.getEstimatedHours())
@@ -56,4 +57,3 @@ public class NextCourseResponse {
                 .build();
     }
 }
-
