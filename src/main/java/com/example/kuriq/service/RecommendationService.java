@@ -10,6 +10,7 @@ import com.example.kuriq.entity.roadmap.RoadmapItem;
 import com.example.kuriq.repository.roadmap.CourseRepository;
 import com.example.kuriq.repository.roadmap.LearningHistoryRepository;
 import com.example.kuriq.repository.roadmap.RoadmapRepository;
+import com.example.kuriq.util.CourseCategoryResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -43,9 +44,13 @@ public class RecommendationService {
 
         RecommendationSeed seed = seedOpt.get();
         Course baseCourse = seed.course();
-        String category = baseCourse.getCategory();
 
-        if (category == null || category.isBlank()) {
+        // DB에 저장된 카테고리 원시값을 정규화 (크롤링 잔재 \n\t 제거 + 대표 카테고리 매핑)
+        // 예: "외부연계\n\n\t\t\t인문/교양" → "인문·교양"
+        String category = CourseCategoryResolver.normalizeCategory(baseCourse.getCategory());
+
+        if (category == null || category.isBlank() || category.equals("기타")) {
+            log.warn("[추천] 정규화 후 카테고리 없음: rawCategory={}", baseCourse.getCategory());
             return List.of();
         }
 
@@ -161,15 +166,33 @@ public class RecommendationService {
     }
 
     // AI 추천 실패 시 MySQL에서 같은 카테고리 강좌 3개 직접 조회
+    // category: 정규화된 카테고리명
+    // excludeCourseId: 기준 강좌 ID (중복 제외)
     // excludeIds: 현재 로드맵에 포함된 강좌 ID 목록 (추천에서 제외)
     private List<NextCourseResponse> fallbackFromMySQL(String category, String excludeCourseId, Set<String> excludeIds) {
         log.info("[추천] MySQL 폴백 실행: category={}", category);
+
+        // CATEGORY_ALIASES의 별칭 목록으로 OR 조건 검색
+        // DB에 정규화 전 원시값이 저장되어 있으므로 별칭 포함 여부로 조회
         List<Course> courses = courseRepository
                 .findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(category, excludeCourseId)
                 .stream()
                 // 현재 로드맵에 포함된 강좌 제외
                 .filter(c -> !excludeIds.contains(c.getId()))
+                // DB 카테고리 정규화 후 대상 카테고리와 일치하는 강좌만 포함
+                .filter(c -> category.equals(CourseCategoryResolver.normalizeCategory(c.getCategory())))
                 .toList();
+
+        // 정규화 필터 후 결과가 없으면 카테고리 필터 없이 재조회 (최후 폴백)
+        if (courses.isEmpty()) {
+            log.warn("[추천] 정규화 필터 후 결과 없음 — 카테고리 필터 없이 재조회: category={}", category);
+            courses = courseRepository
+                    .findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(category, excludeCourseId)
+                    .stream()
+                    .filter(c -> !excludeIds.contains(c.getId()))
+                    .toList();
+        }
+
         return courses.stream()
                 .map(c -> NextCourseResponse.from(c,
                         String.format("%s 분야의 추천 강좌예요!", category)))
