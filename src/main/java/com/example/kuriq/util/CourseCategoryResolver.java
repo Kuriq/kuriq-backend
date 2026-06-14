@@ -21,17 +21,35 @@ public final class CourseCategoryResolver {
     private CourseCategoryResolver() {
     }
 
+    /**
+     * DB에서 가져온 카테고리 원시값을 정규화된 카테고리명으로 변환한다.
+     * - \n, \t 등 HTML 크롤링 잔재 공백문자 제거
+     * - CATEGORY_ALIASES 기반으로 대표 카테고리로 매핑
+     * - 매핑 실패 시 원시값 반환, null/blank 시 "기타" 반환
+     */
     public static String normalizeCategory(String rawCategory) {
-        String value = rawCategory == null ? "" : rawCategory.trim();
+        if (rawCategory == null || rawCategory.isBlank()) {
+            return "기타";
+        }
+
+        // \n, \t, \r 등 HTML 크롤링 잔재 공백문자 제거 후 trim
+        // 예: "외부연계\n\n\t\t\t\t인문/교양" → "외부연계 인문/교양"
+        String value = rawCategory
+                .replaceAll("[\\n\\r\\t]+", " ")  // 개행·탭 → 공백으로 치환
+                .replaceAll("\\s{2,}", " ")        // 연속 공백 → 단일 공백
+                .trim();
+
         if (value.isBlank()) {
             return "기타";
         }
 
+        // CATEGORY_ALIASES 기반으로 대표 카테고리로 매핑
         for (Map.Entry<String, String[]> entry : CATEGORY_ALIASES.entrySet()) {
+            // 대표 카테고리명과 정확히 일치하는 경우
             if (entry.getKey().equals(value)) {
                 return entry.getKey();
             }
-
+            // 별칭(alias) 중 하나라도 포함하는 경우
             for (String alias : entry.getValue()) {
                 if (value.contains(alias)) {
                     return entry.getKey();
@@ -42,18 +60,20 @@ public final class CourseCategoryResolver {
         return value.contains("기타") ? "기타" : value;
     }
 
+    /**
+     * 정규화된 카테고리명에 해당하는 모든 별칭(alias) Set을 반환한다.
+     * 검색 필터링 시 다양한 별칭으로 OR 조건을 구성할 때 사용한다.
+     */
     public static Set<String> categoryAliases(String rawCategory) {
         String normalized = normalizeCategory(rawCategory);
         LinkedHashSet<String> aliases = new LinkedHashSet<>();
         aliases.add(normalized);
-
         String[] values = CATEGORY_ALIASES.get(normalized);
         if (values != null) {
             for (String value : values) {
                 aliases.add(value);
             }
         }
-
         return aliases;
     }
 }
