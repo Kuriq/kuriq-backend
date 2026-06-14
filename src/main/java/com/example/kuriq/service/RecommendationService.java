@@ -49,7 +49,17 @@ public class RecommendationService {
             return List.of();
         }
 
-        // 3. AI 서버에 벡터 유사도 기반 추천 요청
+        // 현재 로드맵에 포함된 강좌 ID 목록 추출 (추천에서 제외하기 위함)
+        Set<String> roadmapCourseIds = new HashSet<>();
+        if (roadmapId != null && !roadmapId.isBlank()) {
+            roadmapRepository.findByIdWithItems(roadmapId).ifPresent(roadmap ->
+                roadmap.getItems().stream()
+                    .filter(item -> item.getCourse() != null)
+                    .forEach(item -> roadmapCourseIds.add(item.getCourse().getId()))
+            );
+        }
+
+        // AI 서버에 벡터 유사도 기반 추천 요청
         String aiCourseId = baseCourse.getId();
 
         AiClient.RecommendationAiResponse aiResponse;
@@ -65,15 +75,15 @@ public class RecommendationService {
         } catch (Exception e) {
             log.error("[추천] AI 서버 호출 실패: {}", e.getMessage());
             // AI 호출 실패 시 MySQL 폴백
-            return fallbackFromMySQL(category, baseCourse.getId());
+            return fallbackFromMySQL(category, baseCourse.getId(), roadmapCourseIds);
         }
 
         if (aiResponse == null || aiResponse.getCourses() == null || aiResponse.getCourses().isEmpty()) {
             // AI 응답 없을 시 MySQL 폴백
-            return fallbackFromMySQL(category, baseCourse.getId());
+            return fallbackFromMySQL(category, baseCourse.getId(), roadmapCourseIds);
         }
 
-        // 4. AI 서버 응답 강좌 최대 3개를 MySQL에서 조회
+        // AI 서버 응답 강좌 최대 3개를 MySQL에서 조회
         List<NextCourseResponse> result = new ArrayList<>();
         Set<String> addedCourseIds = new HashSet<>();  // 중복 방지용
 
@@ -85,7 +95,9 @@ public class RecommendationService {
             Optional<Course> directCourseOpt = courseRepository.findById(courseIdRaw);
             if (directCourseOpt.isPresent()) {
                 Course course = directCourseOpt.get();
+                // 이미 추가했거나 현재 로드맵에 포함된 강좌 제외
                 if (addedCourseIds.contains(course.getId())) continue;
+                if (roadmapCourseIds.contains(course.getId())) continue;
                 addedCourseIds.add(course.getId());
                 result.add(NextCourseResponse.from(course, message));
                 continue;
@@ -108,8 +120,9 @@ public class RecommendationService {
 
             if (courseOpt.isPresent()) {
                 Course course = courseOpt.get();
-                // 중복 제거
+                // 이미 추가했거나 현재 로드맵에 포함된 강좌 제외
                 if (addedCourseIds.contains(course.getId())) continue;
+                if (roadmapCourseIds.contains(course.getId())) continue;
                 addedCourseIds.add(course.getId());
                 result.add(NextCourseResponse.from(course, message));
             } else {
@@ -119,6 +132,8 @@ public class RecommendationService {
                     log.warn("[추천] courses 테이블에 없고 url도 없음: {}", courseIdRaw);
                     continue;
                 }
+                // 현재 로드맵에 포함된 강좌 제외
+                if (roadmapCourseIds.contains(courseIdRaw)) continue;
                 // courses 테이블에 없으면 AI 응답 데이터로 직접 구성
                 if (addedCourseIds.contains(courseIdRaw)) continue;
                 addedCourseIds.add(courseIdRaw);
@@ -139,17 +154,22 @@ public class RecommendationService {
 
         // AI 응답이 있었지만 매칭되는 강좌가 없는 경우 MySQL 폴백
         if (result.isEmpty()) {
-            return fallbackFromMySQL(category, baseCourse.getId());
+            return fallbackFromMySQL(category, baseCourse.getId(), roadmapCourseIds);
         }
 
         return result;
     }
 
     // AI 추천 실패 시 MySQL에서 같은 카테고리 강좌 3개 직접 조회
-    private List<NextCourseResponse> fallbackFromMySQL(String category, String excludeCourseId) {
+    // excludeIds: 현재 로드맵에 포함된 강좌 ID 목록 (추천에서 제외)
+    private List<NextCourseResponse> fallbackFromMySQL(String category, String excludeCourseId, Set<String> excludeIds) {
         log.info("[추천] MySQL 폴백 실행: category={}", category);
         List<Course> courses = courseRepository
-                .findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(category, excludeCourseId);
+                .findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(category, excludeCourseId)
+                .stream()
+                // 현재 로드맵에 포함된 강좌 제외
+                .filter(c -> !excludeIds.contains(c.getId()))
+                .toList();
         return courses.stream()
                 .map(c -> NextCourseResponse.from(c,
                         String.format("%s 분야의 추천 강좌예요!", category)))
@@ -183,6 +203,7 @@ public class RecommendationService {
             return Optional.empty();
         }
 
+        // 가장 최근에 완료한 강좌를 기준으로 추천
         Optional<RoadmapItem> latestCompleted = items.stream()
                 .filter(item -> Boolean.TRUE.equals(item.getIsCompleted()))
                 .filter(item -> item.getCompletedAt() != null)
@@ -193,6 +214,7 @@ public class RecommendationService {
             return Optional.of(new RecommendationSeed(latestCompleted.get().getCourse(), true));
         }
 
+        // 완료한 강좌가 없으면 현재 진행 중인 첫 번째 강좌 기준으로 추천
         Optional<RoadmapItem> currentItem = items.stream()
                 .filter(item -> !Boolean.TRUE.equals(item.getIsCompleted()))
                 .filter(item -> item.getCourse() != null)
@@ -203,6 +225,7 @@ public class RecommendationService {
             return Optional.of(new RecommendationSeed(currentItem.get().getCourse(), false));
         }
 
+        // 완료/미완료 모두 없으면 마지막 강좌 기준으로 추천
         return items.stream()
                 .filter(item -> item.getCourse() != null)
                 .max(Comparator.comparing(RoadmapItem::getWeekNumber)
@@ -211,6 +234,7 @@ public class RecommendationService {
     }
 
     private Optional<RecommendationSeed> findLatestCompletedSeed(String userId) {
+        // 가장 최근 이수한 강좌 1개 조회
         List<LearningHistory> histories = learningHistoryRepository.findByUserIdOrderByCompletedAtDesc(
                 userId,
                 PageRequest.of(0, 1)
