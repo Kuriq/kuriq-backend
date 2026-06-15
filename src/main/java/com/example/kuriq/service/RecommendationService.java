@@ -49,7 +49,7 @@ public class RecommendationService {
         // 예: "외부연계\n\n\t\t\t인문/교양" → "인문·교양"
         String category = CourseCategoryResolver.normalizeCategory(baseCourse.getCategory());
 
-        if (category == null || category.isBlank() || category.equals("기타")) {
+        if (category == null || category.isBlank()) {
             log.warn("[추천] 정규화 후 카테고리 없음: rawCategory={}", baseCourse.getCategory());
             return List.of();
         }
@@ -166,34 +166,41 @@ public class RecommendationService {
     }
 
     // AI 추천 실패 시 MySQL에서 같은 카테고리 강좌 3개 직접 조회
-    // category: 정규화된 카테고리명
+    // category: 정규화된 카테고리명 (예: "인문·교양")
     // excludeCourseId: 기준 강좌 ID (중복 제외)
     // excludeIds: 현재 로드맵에 포함된 강좌 ID 목록 (추천에서 제외)
     private List<NextCourseResponse> fallbackFromMySQL(String category, String excludeCourseId, Set<String> excludeIds) {
         log.info("[추천] MySQL 폴백 실행: category={}", category);
 
-        // CATEGORY_ALIASES의 별칭 목록으로 OR 조건 검색
-        // DB에 정규화 전 원시값이 저장되어 있으므로 별칭 포함 여부로 조회
-        List<Course> courses = courseRepository
-                .findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(category, excludeCourseId)
-                .stream()
-                // 현재 로드맵에 포함된 강좌 제외
-                .filter(c -> !excludeIds.contains(c.getId()))
-                // DB 카테고리 정규화 후 대상 카테고리와 일치하는 강좌만 포함
-                .filter(c -> category.equals(CourseCategoryResolver.normalizeCategory(c.getCategory())))
-                .toList();
+        // CATEGORY_ALIASES에서 해당 카테고리의 별칭 목록 가져옴
+        // 예: "인문·교양" → ["인문/교양", "인문", "철학", ...]
+        Set<String> aliases = CourseCategoryResolver.categoryAliases(category);
 
-        // 정규화 필터 후 결과가 없으면 카테고리 필터 없이 재조회 (최후 폴백)
-        if (courses.isEmpty()) {
-            log.warn("[추천] 정규화 필터 후 결과 없음 — 카테고리 필터 없이 재조회: category={}", category);
-            courses = courseRepository
-                    .findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(category, excludeCourseId)
-                    .stream()
-                    .filter(c -> !excludeIds.contains(c.getId()))
-                    .toList();
+        List<Course> candidates = new ArrayList<>();
+
+        // 별칭 키워드로 LIKE 검색 — DB에 "외부연계\n\n\t\t인문/교양" 형태로 저장된 경우도 매칭
+        for (String alias : aliases) {
+            List<Course> found = courseRepository
+                    .findTop10ByIsActiveTrueAndCategoryContainsAliasAndIdNot(alias, excludeCourseId);
+            for (Course c : found) {
+                // 현재 로드맵 강좌 및 중복 제외
+                if (!excludeIds.contains(c.getId()) &&
+                        candidates.stream().noneMatch(x -> x.getId().equals(c.getId()))) {
+                    candidates.add(c);
+                }
+            }
+            // 3개 이상 확보되면 더 이상 검색 불필요
+            if (candidates.size() >= 3) break;
         }
 
-        return courses.stream()
+        // 별칭 검색으로도 결과 없으면 로그만 남기고 빈 리스트 반환
+        if (candidates.isEmpty()) {
+            log.warn("[추천] 별칭 검색 후에도 결과 없음: category={}", category);
+            return List.of();
+        }
+
+        return candidates.stream()
+                .limit(3)
                 .map(c -> NextCourseResponse.from(c,
                         String.format("%s 분야의 추천 강좌예요!", category)))
                 .toList();
