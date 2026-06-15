@@ -61,7 +61,7 @@ public class RoadmapService {
         // courseId 를 platform + platformCourseId 로 분리하여 강좌 조회
         Map<String, Course> courseMap = new java.util.HashMap<>();
         List<String> missingIds = new java.util.ArrayList<>();
-        
+
         for (String courseId : courseIds) {
             Course directCourse = findCourseByAiCourseId(courseId);
             if (directCourse != null) {
@@ -80,7 +80,7 @@ public class RoadmapService {
 
             courseRepository.findByPlatformAndPlatformCourseId(platform, platformCourseId)
                     .ifPresent(course -> courseMap.put(courseId, course));
-            
+
             // 없는 강좌는 목록에 추가
             if (!courseMap.containsKey(courseId)) {
                 missingIds.add(courseId);
@@ -88,12 +88,12 @@ public class RoadmapService {
         }
 
         log.info("[RoadmapService] DB 에서 찾은 강좌 수: {}/{}", courseMap.size(), courseIds.size());
-        
+
         // 없는 강좌는 chromaDB 에서 메타데이터 조회하여 DB 에 저장
         if (!missingIds.isEmpty()) {
             log.warn("[RoadmapService] DB 에 없는 courseId: {}", missingIds);
             log.info("[RoadmapService] chromaDB 에서 메타데이터 조회 시작...");
-            
+
             AiClient.CourseMetadataResponse metadataResponse = aiClient.getCourseMetadata(missingIds);
             if (metadataResponse != null && metadataResponse.getCourses() != null) {
                 for (AiClient.CourseMetadataResponse.CourseMetadataDto dto : metadataResponse.getCourses()) {
@@ -148,7 +148,7 @@ public class RoadmapService {
                 log.info("[RoadmapService] chromaDB 에서 {}개 강좌 메타데이터 조회 및 저장 완료", metadataResponse.getCourses().size());
             }
         }
-        
+
         // 최종적으로 모든 courseId 가 courseMap 에 있는지 확인
         long missingCount = courseIds.stream().filter(id -> !courseMap.containsKey(id)).count();
         if (missingCount > 0) {
@@ -226,7 +226,7 @@ public class RoadmapService {
 
     // 강좌 완료 처리
     public RoadmapResponse.RoadmapItemResponse completeItem(String itemId, String userId) {
-        RoadmapItem item = getItemAndValidate(itemId, userId); // 빠져있던 부분
+        RoadmapItem item = getItemAndValidate(itemId, userId);
 
         if (item.getIsCompleted()) {
             throw new IllegalStateException("이미 완료된 강좌입니다");
@@ -290,10 +290,7 @@ public class RoadmapService {
         return RoadmapResponse.RoadmapItemResponse.from(item);
     }
 
-    /** 데이터 조회 후 사용자 권한까지 검증하는 공통 메서드 */
-    // MultipleBagFetchException 에러 고치기 -> 한 번에 하나의 Bag만 fetch하기
     private Roadmap getAndValidate(String roadmapId, String userId) {
-        // 1차 조회: weeks 로드
         Roadmap roadmap = roadmapRepository.findByIdWithWeeks(roadmapId)
                 .orElseThrow(() -> new RuntimeException("로드맵을 찾을 수 없습니다"));
 
@@ -301,11 +298,9 @@ public class RoadmapService {
             throw new RuntimeException("접근 권한이 없습니다");
         }
 
-        // 2차 조회: items + course 로드 (영속성 컨텍스트가 같으므로 자동 병합됨)
         roadmapRepository.findByIdWithItems(roadmapId);
 
         return roadmap;
-
     }
 
     private RoadmapItem getItemAndValidate(String itemId, String userId) {
@@ -314,29 +309,25 @@ public class RoadmapService {
         if (!item.getRoadmap().getUserId().equals(userId)) {
             throw new RuntimeException("접근 권한이 없습니다");
         }
-        
-        // 전체 완료 체크를 위해 Roadmap 의 모든 items 명시적으로 로드
+
         Roadmap roadmap = item.getRoadmap();
-        // Roadmap.items 는 @OneToMany(fetch = LAZY) 이므로 초기화 필요
         roadmapItemRepository.findAllByRoadmapId(roadmap.getId()).size();
-        
+
         return item;
     }
 
     private Platform parsePlatform(String platformStr) {
         if (platformStr == null || platformStr.isBlank()) {
-            return Platform.K_MOOC;  // 기본값
+            return Platform.K_MOOC;
         }
-        
-        // 한국어 플랫폼명 매핑
+
         if ("온국민평생배움터".equals(platformStr) || "ALLGO".equals(platformStr)) {
             return Platform.LLL_PORTAL;
         }
         if ("에버러닝".equals(platformStr)) {
             return Platform.EVERLEARNING;
         }
-        
-        // 영문 플랫폼명 (언더스코어/대시 정규화)
+
         String normalized = platformStr.replace("-", "_").toUpperCase();
         try {
             return Platform.valueOf(normalized);
@@ -368,6 +359,9 @@ public class RoadmapService {
         if (courseId.startsWith("온국민평생배움터_")) {
             return Platform.LLL_PORTAL;
         }
+        if (courseId.startsWith("서울시평생학습포털_")) {
+            return Platform.SEOUL_LLL;
+        }
         if (courseId.startsWith("KOCW_")) {
             return Platform.KOCW;
         }
@@ -393,6 +387,9 @@ public class RoadmapService {
         }
         if (courseId != null && courseId.startsWith("온국민평생배움터_")) {
             return courseId.substring("온국민평생배움터_".length());
+        }
+        if (courseId != null && courseId.startsWith("서울시평생학습포털_")) {
+            return courseId.substring("서울시평생학습포털_".length());
         }
 
         return courseId;
