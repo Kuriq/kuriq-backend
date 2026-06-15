@@ -35,9 +35,14 @@ public class RecommendationService {
     private final RoadmapRepository roadmapRepository;
     private final AiClient aiClient;
 
-    public List<NextCourseResponse> getRecommendation(String userId, String roadmapId) {
+    public List<NextCourseResponse> getRecommendation(String userId, String roadmapId, String baseCourseId) {
 
-        Optional<RecommendationSeed> seedOpt = resolveSeed(userId, roadmapId);
+        // baseCourseId가 있으면 해당 강좌를 기준으로 추천 (현재 보고 있는 주차 기준)
+        // 없으면 기존 로직대로 최근 완료/진행 중인 강좌 기준으로 추천
+        Optional<RecommendationSeed> seedOpt = (baseCourseId != null && !baseCourseId.isBlank())
+                ? courseRepository.findById(baseCourseId).map(c -> new RecommendationSeed(c, false))
+                : resolveSeed(userId, roadmapId);
+
         if (seedOpt.isEmpty()) {
             return List.of();
         }
