@@ -1,191 +1,512 @@
 package com.example.kuriq.service;
 
-import com.example.kuriq.dto.course.request.CourseSearchRequest;
-import com.example.kuriq.dto.course.response.CourseResponse;
-import com.example.kuriq.dto.course.response.CourseSearchResponse;
-import com.example.kuriq.entity.roadmap.Course;
-import com.example.kuriq.entity.roadmap.Platform;
-import com.example.kuriq.repository.roadmap.CourseRepository;
-import com.example.kuriq.util.CourseCategoryResolver;
-import com.example.kuriq.util.CoursePlatformLabelResolver;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.kuriq.client.AiClient;
+import com.example.kuriq.dto.roadmap.response.RoadmapResponse;
+import com.example.kuriq.entity.roadmap.*;
+import com.example.kuriq.entity.user.User;
+import com.example.kuriq.repository.notification.NotificationSettingRepository;
+import com.example.kuriq.repository.roadmap.*;
+import com.example.kuriq.repository.user.UserRepository;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.reactive.function.client.WebClient;
 
-import java.time.Duration;
+import org.springframework.data.domain.Pageable;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
-public class CourseService {
+@Transactional
+public class RoadmapService {
 
+    private final RoadmapRepository roadmapRepository;
+    private final RoadmapItemRepository roadmapItemRepository;
+    private final RoadmapWeekRepository roadmapWeekRepository;
     private final CourseRepository courseRepository;
-    private final ObjectMapper objectMapper;
-    private final WebClient aiWebClient;
+    private final LearningHistoryRepository learningHistoryRepository;
+    private final AiClient aiClient;
+    private final NotificationSettingRepository notificationSettingRepository;
+    private final UserRepository userRepository;
+    private final EmailService emailService;
+    private final BadgeService badgeService;
+    private static final String DASHBOARD_URL = "https://kuriq.com/dashboard";
 
-    @Value("${ai.service.base-url}")
-    private String aiServiceUrl;
+    // 로드맵 생성
+    public RoadmapResponse generateRoadmap(String prompt, String userId) {
 
-    @Value("${internal.api-key}")
-    private String internalApiKey;
+        // AI 호출
+        AiClient.RoadmapGenerateAiResponse ai = aiClient.generateRoadmap(
+                AiClient.RoadmapGenerateAiRequest.builder()
+                        .prompt(prompt)
+                        .userId(userId)
+                        .build());
 
-    public CourseSearchResponse search(CourseSearchRequest request) {
-        // chromaDB 검색 사용 (AI 서버 프록시)
-        return searchFromChromaDb(request);
+        // AI 응답 courseId → 강좌 조회
+        // 최신 AI 는 백엔드 Course.id(UUID)를, 레거시 AI 는 platform_platformCourseId 를 반환할 수 있다.
+        List<String> courseIds = ai.getWeeks().stream()
+                .flatMap(w -> w.getCourses().stream())
+                .map(AiClient.RoadmapGenerateAiResponse.CourseItemDto::getCourseId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        log.info("[RoadmapService] AI 가 반환한 courseId 목록: {}", courseIds);
+
+        // courseId 를 platform + platformCourseId 로 분리하여 강좌 조회
+        Map<String, Course> courseMap = new java.util.HashMap<>();
+        List<String> missingIds = new java.util.ArrayList<>();
+
+        for (String courseId : courseIds) {
+            Course directCourse = findCourseByAiCourseId(courseId);
+            if (directCourse != null) {
+                courseMap.put(courseId, directCourse);
+                continue;
+            }
+
+            Platform platform = extractPlatformFromCourseId(courseId);
+            String platformCourseId = extractPlatformCourseId(courseId);
+
+            if (platform == null || platformCourseId == null || platformCourseId.isBlank()) {
+                log.warn("[RoadmapService] 잘못된 courseId 형식: {}", courseId);
+                missingIds.add(courseId);
+                continue;
+            }
+
+            courseRepository.findByPlatformAndPlatformCourseId(platform, platformCourseId)
+                    .ifPresent(course -> courseMap.put(courseId, course));
+
+            // 없는 강좌는 목록에 추가
+            if (!courseMap.containsKey(courseId)) {
+                missingIds.add(courseId);
+            }
+        }
+
+        log.info("[RoadmapService] DB 에서 찾은 강좌 수: {}/{}", courseMap.size(), courseIds.size());
+
+        // 없는 강좌는 chromaDB 에서 메타데이터 조회하여 DB 에 저장
+        if (!missingIds.isEmpty()) {
+            log.warn("[RoadmapService] DB 에 없는 courseId: {}", missingIds);
+            log.info("[RoadmapService] chromaDB 에서 메타데이터 조회 시작...");
+
+            AiClient.CourseMetadataResponse metadataResponse = aiClient.getCourseMetadata(missingIds);
+            if (metadataResponse != null && metadataResponse.getCourses() != null) {
+                for (AiClient.CourseMetadataResponse.CourseMetadataDto dto : metadataResponse.getCourses()) {
+                    courseRepository.findById(dto.getCourseId())
+                            .ifPresent(course -> courseMap.put(dto.getCourseId(), course));
+
+                    if (courseMap.containsKey(dto.getCourseId())) {
+                        continue;
+                    }
+
+                    Platform platformFromCourseId = extractPlatformFromCourseId(dto.getCourseId());
+                    String platformCourseId = extractPlatformCourseId(dto.getCourseId());
+
+                    if (platformFromCourseId == null || platformCourseId == null || platformCourseId.isBlank()) {
+                        log.error("[RoadmapService] 내부 UUID courseId 누락 또는 backfill 불가: {}", dto.getCourseId());
+                        continue;
+                    }
+
+                    Platform platform = parsePlatform(dto.getPlatform());
+                    if (platform != platformFromCourseId) {
+                        platform = platformFromCourseId;
+                    }
+                    BigDecimal estimatedHours = dto.getEstimatedHours() != null
+                            ? BigDecimal.valueOf(dto.getEstimatedHours())
+                            : BigDecimal.ZERO;
+
+                    courseRepository.upsertCourse(
+                            UUID.randomUUID().toString(),
+                            platform.name(),
+                            platformCourseId,
+                            dto.getTitle(),
+                            dto.getInstitution(),
+                            dto.getCategory(),
+                            dto.getDifficulty(),
+                            dto.getDurationWeeks() != null ? dto.getDurationWeeks() : 0,
+                            estimatedHours,
+                            dto.getHasCertificate() != null ? dto.getHasCertificate() : false,
+                            dto.getUrl() != null && !dto.getUrl().isEmpty() ? dto.getUrl() : "#",
+                            null,
+                            true,
+                            LocalDateTime.now());
+
+                    courseRepository.findByPlatformAndPlatformCourseId(platform, platformCourseId)
+                            .ifPresentOrElse(
+                                    saved -> {
+                                        courseMap.put(dto.getCourseId(), saved);
+                                        log.info("[RoadmapService] Course upsert 완료: {} (UUID: {})", dto.getCourseId(), saved.getId());
+                                    },
+                                    () -> log.error("[RoadmapService] upsert 후에도 강좌를 찾을 수 없음: {}", dto.getCourseId())
+                            );
+                }
+                log.info("[RoadmapService] chromaDB 에서 {}개 강좌 메타데이터 조회 및 저장 완료", metadataResponse.getCourses().size());
+            }
+        }
+
+        // 최종적으로 모든 courseId 가 courseMap 에 있는지 확인
+        long missingCount = courseIds.stream().filter(id -> !courseMap.containsKey(id)).count();
+        if (missingCount > 0) {
+            log.error("[RoadmapService] {}개의 강좌를 찾지 못함. 로드맵 생성을 계속할 수 없습니다.", missingCount);
+            throw new IllegalStateException("강좌 정보를 찾을 수 없습니다.");
+        }
+
+        int totalCourses = ai.getWeeks().stream()
+                .mapToInt(w -> w.getCourses().size())
+                .sum();
+
+        // 로드맵 저장 (초기 상태: inactive)
+        Roadmap roadmap = Roadmap.create(
+                userId, prompt, buildRoadmapTitle(prompt, ai.getGoal(), ai.getTitle()), ai.getGoal(),
+                ai.getTotalWeeks(), ai.getWeeklyHours(), totalCourses);
+        roadmapRepository.save(roadmap);
+
+        // 주차 + 강좌 항목 저장
+        for (AiClient.RoadmapGenerateAiResponse.WeekDto weekDto : ai.getWeeks()) {
+            RoadmapWeek week = RoadmapWeek.create(
+                    roadmap,
+                    weekDto.getWeekNumber(),
+                    weekDto.getTitle(),
+                    weekDto.getDescription(),
+                    BigDecimal.valueOf(weekDto.getTotalHours()));
+            roadmapWeekRepository.save(week);
+            roadmap.getWeeks().add(week);  // ★ 추가 — 컬렉션에 직접 add
+
+            for (AiClient.RoadmapGenerateAiResponse.CourseItemDto itemDto : weekDto.getCourses()) {
+                Course course = courseMap.get(itemDto.getCourseId());
+                if (course == null) {
+                    log.warn("AI courseId 없음: {}", itemDto.getCourseId());
+                    continue;
+                }
+                RoadmapItem item = RoadmapItem.create(roadmap, course, weekDto.getWeekNumber(), itemDto.getOrderInWeek());
+                roadmapItemRepository.save(item);
+                roadmap.getItems().add(item);  // ★ 추가 — 컬렉션에 직접 add
+            }
+        }
+
+        log.info("로드맵 생성: roadmapId={}, userId={}", roadmap.getId(), userId);
+        return buildRoadmapResponse(roadmap);
     }
 
-    private CourseSearchResponse searchFromChromaDb(CourseSearchRequest request) {
+    // 내 로드맵 목록 조회
+    @Transactional(readOnly = true)
+    public List<RoadmapResponse> getMyRoadmaps(String userId, Pageable pageable) {
+        return roadmapRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .skip((long) pageable.getPageNumber() * pageable.getPageSize())
+                .limit(pageable.getPageSize())
+                .map(this::buildRoadmapResponse)
+                .collect(Collectors.toList());
+    }
+
+    // 로드맵 단건 조회
+    @Transactional(readOnly = true)
+    public RoadmapResponse getRoadmapById(String roadmapId, String userId) {
+        return buildRoadmapResponse(getAndValidate(roadmapId, userId));
+    }
+
+    // 로드맵 활성화
+    public RoadmapResponse activateRoadmap(String roadmapId, String userId) {
+        Roadmap roadmap = getAndValidate(roadmapId, userId);
+        roadmapRepository.deactivateCurrentRoadmap(userId);
+        roadmap.activate();
+        log.info("로드맵 활성화: roadmapId={}", roadmapId);
+        return buildRoadmapResponse(roadmap);
+    }
+
+    // 로드맵 삭제
+    public void deleteRoadmap(String roadmapId, String userId) {
+        roadmapRepository.delete(getAndValidate(roadmapId, userId));
+        log.info("로드맵 삭제: roadmapId={}", roadmapId);
+    }
+
+    // 강좌 완료 처리
+    public RoadmapResponse.RoadmapItemResponse completeItem(String itemId, String userId) {
+        RoadmapItem item = getItemAndValidate(itemId, userId);
+
+        if (item.getIsCompleted()) {
+            throw new IllegalStateException("이미 완료된 강좌입니다");
+        }
+
+        item.complete();
+
+        // 학습 이력 저장 (중복 방지)
+        if (!learningHistoryRepository.existsByUserIdAndCourseId(userId, item.getCourse().getId())) {
+            learningHistoryRepository.save(
+                    LearningHistory.create(
+                            userId,
+                            item.getCourse().getId(),
+                            item.getRoadmap().getId(),
+                            item.getId()));
+        }
+
+        // 전체 완료 체크
+        boolean roadmapJustCompleted = false;
         try {
-            log.info("[CourseService] chromaDB 검색 시작: keyword={}, platform={}, category={}", 
-                request.getKeyword(), request.getPlatform(), request.getCategory());
-            
-            JsonNode requestBody = objectMapper.createObjectNode()
-                    .put("keyword", request.getKeyword())
-                    .put("platform", request.getPlatform())
-                    .put("category", request.getCategory())
-                    .put("difficulty", request.getDifficulty())
-                    .put("page", request.getPage())
-                    .put("size", request.getSize());
+            if (item.getRoadmap().allItemsCompleted()) {
+                item.getRoadmap().complete();
+                roadmapJustCompleted = true;
+                log.info("로드맵 전체 완료: roadmapId={}", item.getRoadmap().getId());
 
-            log.info("[CourseService] AI 서버 요청: {}", aiServiceUrl + "/internal/ai/courses/search");
-
-            JsonNode response = aiWebClient.post()
-                    .uri("/internal/ai/courses/search")
-                    .header("X-Internal-Key", internalApiKey)
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
-                    .timeout(Duration.ofSeconds(10))
-                    .block();
-
-            if (response == null) {
-                throw new RuntimeException("AI 서버 응답이 없습니다.");
+                // 완료 축하 알림 (로드맵 전체 완료 시에만 발송)
+                notificationSettingRepository.findCompletionAlertTarget(userId)
+                        .ifPresent(ns -> {
+                            User user = userRepository.findById(userId).orElse(null);
+                            if (user != null && user.getEmail() != null) {
+                                emailService.sendCompletionEmail(
+                                        user.getEmail(), userId, user.getName(),
+                                        item.getRoadmap().getGoal(), DASHBOARD_URL);
+                            }
+                        });
             }
-
-            if (response.get("totalElements").asLong() == 0) {
-                throw new RuntimeException("ChromaDB 결과 없음, MySQL fallback");
-            }
-
-            log.info("[CourseService] AI 서버 응답: totalElements={}", response.get("totalElements").asLong());
-
-            // 응답 파싱
-            List<CourseResponse> content = objectMapper.convertValue(
-                    response.get("content"),
-                    new com.fasterxml.jackson.core.type.TypeReference<List<CourseResponse>>() {}
-            );
-
-            return CourseSearchResponse.builder()
-                    .content(content)
-                    .totalElements(response.get("totalElements").asLong())
-                    .totalPages(response.get("totalPages").asInt())
-                    .currentPage(response.get("currentPage").asInt())
-                    .size(response.get("size").asInt())
-                    .hasNext(response.get("hasNext").asBoolean())
-                    .build();
-
         } catch (Exception e) {
-            log.error("chromaDB 검색 실패: {}", e.getMessage(), e);
-            // fallback: MySQL 검색
-            log.warn("[CourseService] MySQL 로 fallback 합니다.");
-            return searchFromMysql(request);
+            log.error("로드맵 완료 체크 중 오류: {}", e.getMessage(), e);
         }
+
+        // 뱃지 체크 — @Async 이므로 현재 트랜잭션과 분리되어 실행됨
+        final boolean finalRoadmapJustCompleted = roadmapJustCompleted;
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        badgeService.checkAndAwardOnCourseComplete(userId);
+                        if (finalRoadmapJustCompleted) {
+                            badgeService.checkAndAwardOnRoadmapComplete(userId);
+                        }
+                    }
+                });
+
+        return RoadmapResponse.RoadmapItemResponse.from(item);
     }
 
-    private CourseSearchResponse searchFromMysql(CourseSearchRequest request) {
-        Specification<Course> spec = Specification.where((root, query, cb) -> cb.isTrue(root.get("isActive")));
-
-        if (request.getKeyword() != null && !request.getKeyword().isBlank()) {
-            String keyword = "%" + request.getKeyword().toLowerCase() + "%";
-            spec = spec.and((root, query, cb) -> cb.or(
-                    cb.like(cb.lower(root.get("title")), keyword),
-                    cb.like(cb.lower(root.get("institution")), keyword),
-                    cb.like(cb.lower(root.get("description")), keyword)
-            ));
-        }
-        if (request.getPlatform() != null && !request.getPlatform().isBlank()) {
-            Platform platform = CoursePlatformLabelResolver.parseRequestedPlatform(request.getPlatform());
-            if (platform != null) {
-                spec = spec.and(platformSpec(platform));
-            }
-        }
-        if (request.getDifficulty() != null && !request.getDifficulty().isBlank()) spec = spec.and(eq("difficulty", request.getDifficulty()));
-        if (request.getCategory() != null && !request.getCategory().isBlank()) {
-            Set<String> aliases = CourseCategoryResolver.categoryAliases(request.getCategory());
-            spec = spec.and((root, query, cb) -> cb.or(
-                    aliases.stream().map(alias -> cb.like(root.get("category"), "%" + alias + "%"))
-                            .toArray(jakarta.persistence.criteria.Predicate[]::new)
-            ));
-        }
-        if (request.getHasCertificate() != null) spec = spec.and(eq("hasCertificate", request.getHasCertificate()));
-        if (request.getDurationRange() != null && !request.getDurationRange().isBlank()) spec = spec.and(durationSpec(request.getDurationRange()));
-
-        Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), sortFor(request.getSort()));
-        Page<Course> page = courseRepository.findAll(spec, pageable);
-        return CourseSearchResponse.from(page);
+    // 강좌 완료 취소
+    public RoadmapResponse.RoadmapItemResponse uncompleteItem(String itemId, String userId) {
+        RoadmapItem item = getItemAndValidate(itemId, userId);
+        item.uncomplete();
+        return RoadmapResponse.RoadmapItemResponse.from(item);
     }
 
-    private Specification<Course> eq(String field, Object value) {
-        return (root, query, cb) -> cb.equal(root.get(field), value);
+    private Roadmap getAndValidate(String roadmapId, String userId) {
+        Roadmap roadmap = roadmapRepository.findByIdWithWeeks(roadmapId)
+                .orElseThrow(() -> new RuntimeException("로드맵을 찾을 수 없습니다"));
+
+        if (!roadmap.getUserId().equals(userId)) {
+            throw new RuntimeException("접근 권한이 없습니다");
+        }
+
+        roadmapRepository.findByIdWithItems(roadmapId);
+
+        return roadmap;
     }
 
-    private Specification<Course> platformSpec(Platform platform) {
-        return switch (platform) {
-            case K_MOOC -> (root, query, cb) -> cb.or(
-                    cb.equal(root.get("platform"), Platform.K_MOOC),
-                    cb.like(root.get("institution"), "K-MOOC%")
-            );
-            case KOCW -> (root, query, cb) -> cb.or(
-                    cb.equal(root.get("platform"), Platform.KOCW),
-                    cb.like(root.get("institution"), "KOCW%")
-            );
-            case SEOUL_LLL -> (root, query, cb) -> cb.or(
-                    cb.equal(root.get("platform"), Platform.SEOUL_LLL),
-                    cb.like(root.get("institution"), "서울시평생학습포털%"),
-                    cb.like(root.get("institution"), "서울시 평생학습포털%")
-            );
-            default -> eq("platform", platform);
-        };
+    private RoadmapItem getItemAndValidate(String itemId, String userId) {
+        RoadmapItem item = roadmapItemRepository.findById(itemId)
+                .orElseThrow(() -> new RuntimeException("강좌 항목을 찾을 수 없습니다"));
+        if (!item.getRoadmap().getUserId().equals(userId)) {
+            throw new RuntimeException("접근 권한이 없습니다");
+        }
+
+        Roadmap roadmap = item.getRoadmap();
+        roadmapItemRepository.findAllByRoadmapId(roadmap.getId()).size();
+
+        return item;
     }
 
-    private Specification<Course> durationSpec(String range) {
-        String value = range.trim();
+    private Platform parsePlatform(String platformStr) {
+        if (platformStr == null || platformStr.isBlank()) {
+            return Platform.K_MOOC;
+        }
+
+        if ("온국민평생배움터".equals(platformStr) || "ALLGO".equals(platformStr)) {
+            return Platform.LLL_PORTAL;
+        }
+        if ("에버러닝".equals(platformStr)) {
+            return Platform.EVERLEARNING;
+        }
+
+        String normalized = platformStr.replace("-", "_").toUpperCase();
         try {
-            if (value.matches("^\\d+-\\d+$")) {
-                String[] parts = value.split("-");
-                int min = Integer.parseInt(parts[0]);
-                int max = Integer.parseInt(parts[1]);
-                return (root, query, cb) -> cb.between(root.get("durationWeeks"), min, max);
-            }
-            if (value.matches("^\\d+\\+$")) {
-                int min = Integer.parseInt(value.substring(0, value.length() - 1));
-                return (root, query, cb) -> cb.ge(root.get("durationWeeks"), min);
-            }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("durationRange 형식이 올바르지 않습니다.");
+            return Platform.valueOf(normalized);
+        } catch (IllegalArgumentException e) {
+            log.warn("[RoadmapService] 잘못된 platform: {}, 기본값 사용", platformStr);
+            return Platform.K_MOOC;
         }
-        throw new IllegalArgumentException("durationRange 형식이 올바르지 않습니다.");
     }
 
-    private Sort sortFor(String sort) {
-        return switch (sort == null ? "latest" : sort) {
-            case "title" -> Sort.by(Sort.Direction.ASC, "title");
-            case "duration" -> Sort.by(Sort.Direction.ASC, "durationWeeks");
-            case "hours" -> Sort.by(Sort.Direction.ASC, "estimatedHours");
-            case "latest" -> Sort.by(Sort.Direction.DESC, "createdAt");
-            default -> Sort.by(Sort.Direction.DESC, "createdAt");
-        };
+    private Platform extractPlatformFromCourseId(String courseId) {
+        if (courseId == null || courseId.isBlank()) {
+            return null;
+        }
+
+        for (Platform platform : Platform.values()) {
+            String prefix = platform.name() + "_";
+            if (courseId.startsWith(prefix)) {
+                return platform;
+            }
+        }
+
+        // 레거시/한글 포맷 호환
+        if (courseId.startsWith("K-MOOC_")) {
+            return Platform.K_MOOC;
+        }
+        if (courseId.startsWith("에버러닝_")) {
+            return Platform.EVERLEARNING;
+        }
+        if (courseId.startsWith("온국민평생배움터_")) {
+            return Platform.LLL_PORTAL;
+        }
+        if (courseId.startsWith("서울시평생학습포털_")) {
+            return Platform.SEOUL_LLL;
+        }
+        if (courseId.startsWith("KOCW_")) {
+            return Platform.KOCW;
+        }
+
+        return null;
+    }
+
+    private String extractPlatformCourseId(String courseId) {
+        Platform platform = extractPlatformFromCourseId(courseId);
+        if (platform != null) {
+            String prefix = platform.name() + "_";
+            if (courseId.startsWith(prefix)) {
+                return courseId.substring(prefix.length());
+            }
+        }
+
+        // 레거시/한글 포맷 호환
+        if (courseId != null && courseId.startsWith("K-MOOC_")) {
+            return courseId.substring("K-MOOC_".length());
+        }
+        if (courseId != null && courseId.startsWith("에버러닝_")) {
+            return courseId.substring("에버러닝_".length());
+        }
+        if (courseId != null && courseId.startsWith("온국민평생배움터_")) {
+            return courseId.substring("온국민평생배움터_".length());
+        }
+        if (courseId != null && courseId.startsWith("서울시평생학습포털_")) {
+            return courseId.substring("서울시평생학습포털_".length());
+        }
+
+        return courseId;
+    }
+
+    private Course findCourseByAiCourseId(String courseId) {
+        if (courseId == null || courseId.isBlank()) {
+            return null;
+        }
+
+        return courseRepository.findById(courseId)
+                .or(() -> extractEmbeddedUuid(courseId).flatMap(courseRepository::findById))
+                .orElse(null);
+    }
+
+    private java.util.Optional<String> extractEmbeddedUuid(String courseId) {
+        int separatorIndex = courseId.lastIndexOf('_');
+        if (separatorIndex < 0 || separatorIndex + 1 >= courseId.length()) {
+            return java.util.Optional.empty();
+        }
+
+        String suffix = courseId.substring(separatorIndex + 1);
+        try {
+            UUID.fromString(suffix);
+            return java.util.Optional.of(suffix);
+        } catch (IllegalArgumentException ignored) {
+            return java.util.Optional.empty();
+        }
+    }
+
+    // 엔티티 -> 응답 DTO 변환
+    private RoadmapResponse buildRoadmapResponse(Roadmap roadmap) {
+        List<RoadmapItem> items = roadmap.getItems() != null ? roadmap.getItems() : List.of();
+        List<RoadmapWeek> weeks = roadmap.getWeeks() != null ? roadmap.getWeeks() : List.of();
+
+        Map<Integer, List<RoadmapItem>> itemsByWeek =
+                items.stream().collect(Collectors.groupingBy(RoadmapItem::getWeekNumber));
+
+        List<RoadmapResponse.WeekResponse> weekResponses = weeks.stream()
+                .map(week -> {
+                    List<RoadmapItem> wi = itemsByWeek.getOrDefault(week.getWeekNumber(), List.of());
+                    long done = wi.stream().filter(RoadmapItem::getIsCompleted).count();
+                    return RoadmapResponse.WeekResponse.builder()
+                            .weekNumber(week.getWeekNumber())
+                            .title(week.getTitle())
+                            .description(week.getDescription())
+                            .totalHours(week.getTotalHours())
+                            .completedCount((int) done)
+                            .totalCount(wi.size())
+                            .weekProgressPercent(wi.isEmpty() ? 0 : (double) done / wi.size() * 100)
+                            .items(wi.stream()
+                                    .map(RoadmapResponse.RoadmapItemResponse::from)
+                                    .collect(Collectors.toList()))
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        long done = items.stream().filter(RoadmapItem::getIsCompleted).count();
+        double progress = items.isEmpty() ? 0 : (double) done / items.size() * 100;
+
+        return RoadmapResponse.builder()
+                .id(roadmap.getId())
+                .title(roadmap.getTitle())
+                .goal(roadmap.getGoal())
+                .prompt(roadmap.getPrompt())
+                .totalWeeks(roadmap.getTotalWeeks())
+                .weeklyHours(roadmap.getWeeklyHours())
+                .totalCourses(roadmap.getTotalCourses())
+                .isActive(roadmap.getIsActive())
+                .isCompleted(roadmap.getIsCompleted())
+                .currentWeek(roadmap.currentWeek())
+                .progressPercent(progress)
+                .createdAt(roadmap.getCreatedAt())
+                .activatedAt(roadmap.getActivatedAt())
+                .completedAt(roadmap.getCompletedAt())
+                .weeks(weekResponses)
+                .build();
+    }
+
+    private String buildRoadmapTitle(String prompt, String goal, String aiTitle) {
+        if (aiTitle != null && !aiTitle.isBlank()) {
+            return aiTitle;
+        }
+
+        String source = ((prompt == null ? "" : prompt) + " " + (goal == null ? "" : goal)).toLowerCase();
+
+        String subject = "맞춤 학습";
+        if (containsAny(source, "ai", "인공지능", "데이터", "머신러닝", "딥러닝")) subject = "AI·데이터";
+        else if (containsAny(source, "영어")) subject = "영어";
+        else if (containsAny(source, "일본어")) subject = "일본어";
+        else if (containsAny(source, "중국어")) subject = "중국어";
+        else if (containsAny(source, "파이썬")) subject = "파이썬";
+        else if (containsAny(source, "프로그래밍", "코딩", "개발")) subject = "프로그래밍";
+        else if (containsAny(source, "디자인", "ui", "ux")) subject = "디자인";
+        else if (containsAny(source, "마케팅")) subject = "마케팅";
+        else if (containsAny(source, "경영", "비즈니스")) subject = "경영";
+        else if (containsAny(source, "회계", "재무")) subject = "회계·재무";
+        else if (containsAny(source, "통계")) subject = "통계";
+        else if (containsAny(source, "글쓰기")) subject = "글쓰기";
+
+        String level = "";
+        if (containsAny(source, "심화")) level = "심화";
+        else if (containsAny(source, "중급")) level = "중급";
+        else if (containsAny(source, "초급")) level = "초급";
+        else if (containsAny(source, "입문", "처음", "기초")) level = "입문";
+
+        return level.isBlank()
+                ? subject + " 로드맵"
+                : subject + " " + level + " 로드맵";
+    }
+
+    private boolean containsAny(String text, String... keywords) {
+        for (String keyword : keywords) {
+            if (text.contains(keyword.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
     }
 }
