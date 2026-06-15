@@ -91,7 +91,22 @@ public interface CourseRepository extends JpaRepository<Course, String>, JpaSpec
     // 카테고리별 조회
     List<Course> findByCategoryAndIsActiveTrue(String category);
 
-    // AI 추천 실패 시 MySQL 폴백용 - 같은 카테고리에서 특정 강좌 제외하고 3개 조회
+    // AI 추천 실패 시 MySQL 폴백용 - 같은 카테고리에서 특정 강좌 제외하고 3개 조회 (정확히 일치)
     List<Course> findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(
             String category, String excludeId);
+
+    // 추천 폴백용 - category 컬럼에 alias 키워드가 포함된 강좌 조회 (LIKE 검색)
+    // DB에 "외부연계\n\n\t\t인문/교양" 형태로 저장된 경우를 위해 별칭 포함 여부로 검색
+    @Query(value = """
+        SELECT * FROM courses
+        WHERE is_active = true
+          AND id != :excludeId
+          AND category LIKE CONCAT('%', :alias, '%')
+        ORDER BY id ASC
+        LIMIT 10
+        """, nativeQuery = true)
+    List<Course> findTop10ByIsActiveTrueAndCategoryContainsAliasAndIdNot(
+            @Param("alias") String alias,
+            @Param("excludeId") String excludeId
+    );
 }
