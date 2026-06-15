@@ -123,15 +123,17 @@ public class UserController {
 
     @Operation(
             summary = "다음 추천 강좌 조회",
-            description = "가장 최근 이수한 강좌의 카테고리와 난이도를 기반으로 다음 단계 강좌를 추천합니다. " +
+            description = "현재 보고 있는 주차의 baseCourseId를 기준으로 다음 단계 강좌를 추천합니다. " +
+                    "baseCourseId가 없으면 가장 최근 이수 강좌 기준으로 추천합니다. " +
                     "이수 이력이 없거나 추천할 강좌가 없으면 204를 반환합니다."
     )
     @SecurityRequirement(name = "bearerAuth")
     @GetMapping("/me/recommendations")
     public ResponseEntity<List<NextCourseResponse>> getRecommendation(
             @AuthenticationPrincipal String userId,
-            @RequestParam(required = false) String roadmapId) {
-        List<NextCourseResponse> result = recommendationService.getRecommendation(userId, roadmapId);
+            @RequestParam(required = false) String roadmapId,
+            @RequestParam(required = false) String baseCourseId) { // 현재 보고 있는 주차의 첫 번째 강좌 ID
+        List<NextCourseResponse> result = recommendationService.getRecommendation(userId, roadmapId, baseCourseId);
         return result.isEmpty()
                 ? ResponseEntity.noContent().build()
                 : ResponseEntity.ok(result);
