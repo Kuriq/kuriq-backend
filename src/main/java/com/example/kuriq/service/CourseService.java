@@ -43,6 +43,10 @@ public class CourseService {
     private String internalApiKey;
 
     public CourseSearchResponse search(CourseSearchRequest request) {
+        // 인기순은 MySQL clickCount 기준으로 정렬해야 하므로 ChromaDB 스킵
+        if ("popular".equals(request.getSort())) {
+            return searchFromMysql(request);
+        }
         return searchFromChromaDb(request);
     }
 
