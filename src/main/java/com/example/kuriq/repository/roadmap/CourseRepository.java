@@ -12,8 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
 
+// Course 테이블 조회/저장 인터페이스
 public interface CourseRepository extends JpaRepository<Course, String>, JpaSpecificationExecutor<Course> {
 
+    // 플랫폼 + 플랫폼 강좌 ID로 조회 (크롤링 시 중복 방지용)
     Optional<Course> findByPlatformAndPlatformCourseId(Platform platform, String platformCourseId);
 
     @Modifying
@@ -84,12 +86,22 @@ public interface CourseRepository extends JpaRepository<Course, String>, JpaSpec
             @Param("lastCrawledAt") java.time.LocalDateTime lastCrawledAt
     );
 
+    // 활성화된 강좌만 조회
     List<Course> findByIsActiveTrue();
 
+    // 카테고리별 조회
     List<Course> findByCategoryAndIsActiveTrue(String category);
 
+    // AI 추천 실패 시 MySQL 폴백용 - 같은 카테고리에서 특정 강좌 제외하고 3개 조회
     List<Course> findTop3ByCategoryAndIsActiveTrueAndIdNotOrderByIdAsc(
             String category, String excludeId);
+
+    // RecommendationService fallback용 - 카테고리 alias 포함 강좌 최대 10개
+    @Query(value = "SELECT * FROM courses WHERE is_active = true AND LOWER(category) LIKE LOWER(CONCAT('%', :alias, '%')) AND id != :excludeId LIMIT 10", nativeQuery = true)
+    List<Course> findTop10ByIsActiveTrueAndCategoryContainsAliasAndIdNot(
+            @Param("alias") String alias,
+            @Param("excludeId") String excludeId
+    );
 
     @Transactional
     @Modifying
