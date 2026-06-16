@@ -68,17 +68,10 @@ public class UserService {
     }
 
     // 이메일 주소 수정 (소셜 로그인 사용자가 이메일 알림을 위해 등록)
+    // 알림 수신용이므로 중복 검사 없이 자유롭게 변경 가능
     @Transactional
     public void updateEmail(String userId, String email) {
         User user = getUser(userId);
-
-        // 이메일 중복 체크 (본인 제외)
-        userRepository.findByEmail(email).ifPresent(existing -> {
-            if (!existing.getId().equals(userId)) {
-                throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
-            }
-        });
-
         user.updateEmail(email);
     }
 
