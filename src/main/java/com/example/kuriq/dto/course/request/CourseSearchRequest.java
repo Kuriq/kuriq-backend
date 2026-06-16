@@ -29,7 +29,7 @@ public class CourseSearchRequest {
     @Schema(description = "수료증 제공 여부", example = "false")
     private Boolean hasCertificate;
 
-    @Schema(description = "정렬 기준: latest, title, duration, hours", example = "latest", defaultValue = "latest")
+    @Schema(description = "정렬 기준: latest, title, duration, hours, popular", example = "latest", defaultValue = "latest")
     private String sort = "latest";
 
     @Min(0)

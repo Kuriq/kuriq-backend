@@ -33,8 +33,8 @@ public class NotificationScheduler {
 
     private static final String DASHBOARD_URL = "https://kuriq.com/dashboard";
 
-    // 주간 시작 알림 (매 분마다 체크 - TODO: 테스트용, 운영 시 0 0 * * * * 으로 변경)
-    @Scheduled(cron = "0 * * * * *")
+    // 주간 시작 알림 (매일 00:00)
+    @Scheduled(cron = "0 0 0 * * *")
     public void sendWeeklyStartAlert() {
         NotificationSetting.DayOfWeek today = convertDayOfWeek(LocalDate.now().getDayOfWeek());
         int currentHour = LocalDateTime.now().getHour();

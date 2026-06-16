@@ -104,6 +104,11 @@ public class Course {
     // 마지막 데이터 수집 시각
     private LocalDateTime lastCrawledAt;
 
+    // 클릭(조회) 수 — 인기순 정렬에 사용
+    @Column(nullable = false)
+    @Builder.Default
+    private int clickCount = 0;
+
     // 크롤링해서 강좌 데이터가 DB에 들어간 시간
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

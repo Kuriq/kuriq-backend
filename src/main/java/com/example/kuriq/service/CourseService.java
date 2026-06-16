@@ -181,6 +181,7 @@ public class CourseService {
             case "title" -> Sort.by(Sort.Direction.ASC, "title");
             case "duration" -> Sort.by(Sort.Direction.ASC, "durationWeeks");
             case "hours" -> Sort.by(Sort.Direction.ASC, "estimatedHours");
+            case "popular" -> Sort.by(Sort.Direction.DESC, "clickCount");
             case "latest" -> Sort.by(Sort.Direction.DESC, "createdAt");
             default -> Sort.by(Sort.Direction.DESC, "createdAt");
         };
