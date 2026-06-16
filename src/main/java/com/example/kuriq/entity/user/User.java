@@ -133,4 +133,8 @@ public class User {
         this.profileIcon = profileIcon;
         this.profileColor = profileColor;
     }
+
+    public void updateEmail(String email) {
+        this.email = email;
+    }
 }

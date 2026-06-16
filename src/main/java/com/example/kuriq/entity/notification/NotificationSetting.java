@@ -22,7 +22,7 @@ public class NotificationSetting {
     private String userId;
 
     @Column(nullable = false)
-    private Boolean emailEnabled = true;
+    private Boolean emailEnabled = false;
 
     @Column(nullable = false)
     private Boolean kakaoEnabled = false;

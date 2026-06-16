@@ -120,6 +120,43 @@ public class QuizService {
     }
 
     @Transactional(readOnly = true)
+    public QuizGenerateResponse retry(String quizSessionId, String userId) {
+        QuizSession session = quizSessionRepository.findById(quizSessionId)
+                .orElseThrow(() -> new ApiException("QUIZ_SESSION_NOT_FOUND", "퀴즈를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
+        if (!Objects.equals(session.getUserId(), userId)) {
+            throw new ApiException("FORBIDDEN", "이 퀴즈에 접근할 수 없습니다.", HttpStatus.FORBIDDEN);
+        }
+
+        return QuizGenerateResponse.builder()
+                .quizSessionId(session.getId())
+                .courseId(session.getCourseId())
+                .noteId(session.getNoteId())
+                .questions(session.getQuestions().stream().map(q -> QuizGenerateResponse.QuestionDto.builder()
+                        .questionId(q.getId())
+                        .type(q.getType().name())
+                        .question(q.getQuestion())
+                        .options(q.getType() == QuizQuestionType.MULTIPLE_CHOICE ? q.getOptions().stream()
+                                .map(o -> QuizGenerateResponse.OptionDto.builder()
+                                        .id(o.getOptionId())
+                                        .text(o.getText())
+                                        .build())
+                                .collect(Collectors.toList()) : null)
+                        .build()).collect(Collectors.toList()))
+                .build();
+    }
+
+    public QuizSubmitResponse submitRetry(String quizSessionId, QuizSubmitRequest request, String userId) {
+        QuizSession session = quizSessionRepository.findById(quizSessionId)
+                .orElseThrow(() -> new ApiException("QUIZ_SESSION_NOT_FOUND", "퀴즈를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
+        if (!Objects.equals(session.getUserId(), userId)) {
+            throw new ApiException("FORBIDDEN", "이 퀴즈에 접근할 수 없습니다.", HttpStatus.FORBIDDEN);
+        }
+        // 기존 결과 삭제 후 재채점
+        quizResultRepository.findBySessionId(quizSessionId).ifPresent(quizResultRepository::delete);
+        return gradeAndSave(session, request, userId);
+    }
+
+    @Transactional(readOnly = true)
     public QuizHistoryResponse history(String userId, String courseId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         var sessions = courseId == null || courseId.isBlank()

@@ -49,6 +49,16 @@ public class UserController {
         return ResponseEntity.ok(UserResponse.from(userService.updateProfile(userId, req)));
     }
 
+    @Operation(summary = "이메일 주소 수정", description = "소셜 로그인 사용자가 이메일 알림을 위해 이메일 주소를 등록합니다.")
+    @SecurityRequirement(name = "bearerAuth")
+    @PatchMapping("/me/email")
+    public ResponseEntity<Void> updateEmail(
+            @AuthenticationPrincipal String userId,
+            @Valid @RequestBody UpdateEmailRequest req) {
+        userService.updateEmail(userId, req.getEmail());
+        return ResponseEntity.ok().build();
+    }
+
     @Operation(summary = "회원 탈퇴")
     @SecurityRequirement(name = "bearerAuth")
     @DeleteMapping("/me")

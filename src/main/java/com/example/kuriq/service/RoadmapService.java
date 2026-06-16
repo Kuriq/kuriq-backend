@@ -41,6 +41,9 @@ public class RoadmapService {
     // 로드맵 생성
     public RoadmapResponse generateRoadmap(String prompt, String userId) {
 
+        // 기존 활성 로드맵 비활성화 (재생성 시 중복 방지)
+        roadmapRepository.deactivateCurrentRoadmap(userId);
+
         // AI 호출
         AiClient.RoadmapGenerateAiResponse ai = aiClient.generateRoadmap(
                 AiClient.RoadmapGenerateAiRequest.builder()

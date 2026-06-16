@@ -110,4 +110,27 @@ public class QuizController {
             @PathVariable String quizSessionId) {
         return ResponseEntity.ok(quizService.submit(quizSessionId, request, userId));
     }
+
+    @Operation(
+            summary = "퀴즈 다시풀기 — 문제 조회",
+            description = "기존 퀴즈 세션의 문항을 그대로 반환합니다. 정답은 포함되지 않습니다."
+    )
+    @GetMapping("/{quizSessionId}/retry")
+    public ResponseEntity<QuizGenerateResponse> retry(
+            @AuthenticationPrincipal String userId,
+            @PathVariable String quizSessionId) {
+        return ResponseEntity.ok(quizService.retry(quizSessionId, userId));
+    }
+
+    @Operation(
+            summary = "퀴즈 다시풀기 — 답안 제출",
+            description = "다시풀기 모드에서 답안을 제출하고 재채점합니다. 기존 결과는 덮어씌워집니다."
+    )
+    @PostMapping("/{quizSessionId}/submit-retry")
+    public ResponseEntity<QuizSubmitResponse> submitRetry(
+            @Valid @RequestBody QuizSubmitRequest request,
+            @AuthenticationPrincipal String userId,
+            @PathVariable String quizSessionId) {
+        return ResponseEntity.ok(quizService.submitRetry(quizSessionId, request, userId));
+    }
 }
