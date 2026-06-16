@@ -43,8 +43,10 @@ public class CourseService {
     private String internalApiKey;
 
     public CourseSearchResponse search(CourseSearchRequest request) {
-        // 인기순은 MySQL clickCount 기준으로 정렬해야 하므로 ChromaDB 스킵
-        if ("popular".equals(request.getSort())) {
+        String sort = request.getSort();
+        boolean hasKeyword = request.getKeyword() != null && !request.getKeyword().isBlank();
+        // 키워드 없거나, 인기순/강좌명순은 MySQL에서 직접 정렬
+        if (!hasKeyword || "popular".equals(sort) || "title".equals(sort)) {
             return searchFromMysql(request);
         }
         return searchFromChromaDb(request);
@@ -185,7 +187,7 @@ public class CourseService {
             case "title" -> Sort.by(Sort.Direction.ASC, "title");
             case "duration" -> Sort.by(Sort.Direction.ASC, "durationWeeks");
             case "hours" -> Sort.by(Sort.Direction.ASC, "estimatedHours");
-            case "popular" -> Sort.by(Sort.Direction.DESC, "clickCount");
+            case "popular" -> Sort.by(Sort.Direction.DESC, "clickCount").and(Sort.by(Sort.Direction.DESC, "createdAt"));
             case "latest" -> Sort.by(Sort.Direction.DESC, "createdAt");
             default -> Sort.by(Sort.Direction.DESC, "createdAt");
         };
