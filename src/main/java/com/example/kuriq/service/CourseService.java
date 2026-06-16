@@ -23,7 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Slf4j
@@ -80,10 +84,11 @@ public class CourseService {
 
             log.info("[CourseService] AI 서버 응답: totalElements={}", response.get("totalElements").asLong());
 
-            List<CourseResponse> content = objectMapper.convertValue(
+            List<CourseResponse> aiContent = objectMapper.convertValue(
                     response.get("content"),
                     new com.fasterxml.jackson.core.type.TypeReference<List<CourseResponse>>() {}
             );
+            List<CourseResponse> content = hydrateCourseResponsesFromMysql(aiContent);
 
             return CourseSearchResponse.builder()
                     .content(content)
@@ -99,6 +104,34 @@ public class CourseService {
             log.warn("[CourseService] MySQL 로 fallback 합니다.");
             return searchFromMysql(request);
         }
+    }
+
+    private List<CourseResponse> hydrateCourseResponsesFromMysql(List<CourseResponse> aiContent) {
+        if (aiContent == null || aiContent.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> courseIds = aiContent.stream()
+                .map(CourseResponse::getId)
+                .filter(Objects::nonNull)
+                .filter(id -> !id.isBlank())
+                .toList();
+
+        Map<String, Course> courseById = new HashMap<>();
+        courseRepository.findAllById(courseIds)
+                .forEach(course -> courseById.put(course.getId(), course));
+
+        List<CourseResponse> hydrated = new ArrayList<>();
+        for (CourseResponse aiCourse : aiContent) {
+            Course course = courseById.get(aiCourse.getId());
+            if (course == null) {
+                log.warn("[CourseService] ChromaDB 검색 결과를 MySQL 에서 찾을 수 없습니다. courseId={}", aiCourse.getId());
+                continue;
+            }
+            hydrated.add(CourseResponse.from(course));
+        }
+
+        return hydrated;
     }
 
     private CourseSearchResponse searchFromMysql(CourseSearchRequest request) {
