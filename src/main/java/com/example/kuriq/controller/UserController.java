@@ -57,7 +57,7 @@ public class UserController {
             @AuthenticationPrincipal String userId,
             @Valid @RequestBody UpdateEmailRequest req) {
         userService.updateEmail(userId, req.getEmail());
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "회원 탈퇴")
