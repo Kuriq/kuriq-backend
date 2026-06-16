@@ -49,12 +49,14 @@ public class QuizService {
             throw new ApiException("FORBIDDEN", "이 노트에 접근할 수 없습니다.", HttpStatus.FORBIDDEN);
         }
 
+        List<String> excludedQuestions = loadExcludedQuestions(request.getExcludeSessionIds(), userId);
+
         // AI 서버에서 퀴즈 생성
         AiClient.QuizGenerateAiRequest aiRequest = AiClient.QuizGenerateAiRequest.builder()
                 .noteContent(note.getContent())
                 .courseTitle(note.getCourse().getTitle())
                 .courseDifficulty("초급")
-                .excludeQuestions(request.getExcludeSessionIds())
+                .excludeQuestions(excludedQuestions)
                 .questionCount(5)
                 .userId(userId)
                 .build();
@@ -251,6 +253,22 @@ public class QuizService {
         if (ownedCount != distinctIds.size()) {
             throw new IllegalArgumentException("제외할 퀴즈 세션을 찾을 수 없거나 접근 권한이 없습니다");
         }
+    }
+
+    private List<String> loadExcludedQuestions(List<String> excludeSessionIds, String userId) {
+        if (excludeSessionIds == null || excludeSessionIds.isEmpty()) {
+            return List.of();
+        }
+
+        return excludeSessionIds.stream()
+                .distinct()
+                .map(quizSessionRepository::findById)
+                .flatMap(Optional::stream)
+                .filter(session -> Objects.equals(session.getUserId(), userId))
+                .flatMap(session -> session.getQuestions().stream())
+                .map(QuizQuestion::getQuestion)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     private void validateAiResponse(AiClient.QuizGenerateAiResponse response) {
