@@ -5,6 +5,7 @@ import com.example.kuriq.dto.course.response.NextCourseResponse;
 import com.example.kuriq.dto.notification.request.NotificationUpdateRequest;
 import com.example.kuriq.dto.notification.response.NotificationResponse;
 import com.example.kuriq.dto.user.request.DeleteAccountRequest;
+import com.example.kuriq.dto.user.request.UpdateEmailRequest;
 import com.example.kuriq.dto.user.request.UserProfileUpdateRequest;
 import com.example.kuriq.dto.user.response.*;
 import com.example.kuriq.service.RecommendationService;
