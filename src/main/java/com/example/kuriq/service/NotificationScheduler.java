@@ -60,11 +60,12 @@ public class NotificationScheduler {
                     .orElse("첫 번째 강좌");
 
             User user = userRepository.findById(ns.getUserId()).orElse(null);
-            if (user == null || user.getEmail() == null) continue;
+            String targetEmail = user == null ? null : ns.resolveEmail(user.getEmail());
+            if (user == null || targetEmail == null) continue;
 
             try {
                 emailService.sendWeeklyStartEmail(
-                        user.getEmail(), user.getId(), user.getName(), courseName, DASHBOARD_URL);
+                        targetEmail, user.getId(), user.getName(), courseName, DASHBOARD_URL);
                 log.info("주간 시작 알림 발송: userId={}", ns.getUserId());
             } catch (Exception e) {
                 log.error("주간 시작 알림 발송 실패: userId={}, error={}", ns.getUserId(), e.getMessage());
@@ -91,11 +92,12 @@ public class NotificationScheduler {
             if (incompleteCount == 0) continue;
 
             User user = userRepository.findById(ns.getUserId()).orElse(null);
-            if (user == null || user.getEmail() == null) continue;
+            String targetEmail = user == null ? null : ns.resolveEmail(user.getEmail());
+            if (user == null || targetEmail == null) continue;
 
             try {
                 emailService.sendIncompleteReminderEmail(
-                        user.getEmail(), user.getId(), user.getName(), (int) incompleteCount, DASHBOARD_URL);
+                        targetEmail, user.getId(), user.getName(), (int) incompleteCount, DASHBOARD_URL);
                 log.info("미완료 리마인드 발송: userId={}", ns.getUserId());
             } catch (Exception e) {
                 log.error("미완료 리마인드 발송 실패: userId={}, error={}", ns.getUserId(), e.getMessage());
@@ -111,7 +113,8 @@ public class NotificationScheduler {
 
         for (NotificationSetting ns : targets) {
             User user = userRepository.findById(ns.getUserId()).orElse(null);
-            if (user == null || user.getEmail() == null) continue;
+            String targetEmail = user == null ? null : ns.resolveEmail(user.getEmail());
+            if (user == null || targetEmail == null) continue;
 
             long daysSinceLastActivity = ChronoUnit.DAYS.between(
                     user.getUpdatedAt().toLocalDate(), LocalDate.now());
@@ -121,7 +124,7 @@ public class NotificationScheduler {
 
             try {
                 emailService.sendInactivityEmail(
-                        user.getEmail(), user.getId(), user.getName(), DASHBOARD_URL);
+                        targetEmail, user.getId(), user.getName(), DASHBOARD_URL);
                 log.info("장기 미활동 알림 발송: userId={}, days={}", ns.getUserId(), daysSinceLastActivity);
             } catch (Exception e) {
                 log.error("장기 미활동 알림 발송 실패: userId={}, error={}", ns.getUserId(), e.getMessage());

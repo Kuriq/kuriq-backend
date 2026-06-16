@@ -24,6 +24,9 @@ public class NotificationSetting {
     @Column(nullable = false)
     private Boolean emailEnabled = false;
 
+    @Column(length = 255)
+    private String notificationEmail;
+
     @Column(nullable = false)
     private Boolean kakaoEnabled = false;
 
@@ -75,5 +78,15 @@ public class NotificationSetting {
         this.inactivityAlert = inactivity;
         this.completionAlert = completion;
     }
-}
 
+    public void updateNotificationEmail(String email) {
+        this.notificationEmail = email;
+    }
+
+    public String resolveEmail(String fallbackEmail) {
+        if (notificationEmail != null && !notificationEmail.isBlank()) {
+            return notificationEmail;
+        }
+        return fallbackEmail;
+    }
+}

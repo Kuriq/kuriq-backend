@@ -16,6 +16,7 @@ import java.time.LocalTime;
 @Builder
 public class NotificationResponse {
     private Boolean emailEnabled;
+    private String notificationEmail;
     private Boolean kakaoEnabled;
     private NotificationSetting.DayOfWeek learningDay;
     private LocalTime learningTime;
@@ -29,6 +30,7 @@ public class NotificationResponse {
         // ns에 있는 값들을 꺼내서 DTO에 넣음
         return NotificationResponse.builder()
                 .emailEnabled(ns.getEmailEnabled())
+                .notificationEmail(ns.getNotificationEmail())
                 .kakaoEnabled(ns.getKakaoEnabled())
                 .learningDay(ns.getLearningDay())
                 .learningTime(ns.getLearningTime())

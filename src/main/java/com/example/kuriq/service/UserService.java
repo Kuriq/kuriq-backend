@@ -67,12 +67,12 @@ public class UserService {
         return user;
     }
 
-    // 이메일 주소 수정 (소셜 로그인 사용자가 이메일 알림을 위해 등록)
-    // 알림 수신용이므로 중복 검사 없이 자유롭게 변경 가능
+    // 알림 수신용 이메일 수정. 로그인 계정 이메일(users.email)과 분리해 중복을 허용한다.
     @Transactional
     public void updateEmail(String userId, String email) {
-        User user = getUser(userId);
-        user.updateEmail(email);
+        NotificationSetting ns = notificationSettingRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("알림 설정을 찾을 수 없습니다"));
+        ns.updateNotificationEmail(email);
     }
 
     // 소셜 계정 목록 조회

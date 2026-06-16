@@ -259,9 +259,10 @@ public class RoadmapService {
                 notificationSettingRepository.findCompletionAlertTarget(userId)
                         .ifPresent(ns -> {
                             User user = userRepository.findById(userId).orElse(null);
-                            if (user != null && user.getEmail() != null) {
+                            String targetEmail = user == null ? null : ns.resolveEmail(user.getEmail());
+                            if (user != null && targetEmail != null) {
                                 emailService.sendCompletionEmail(
-                                        user.getEmail(), userId, user.getName(),
+                                        targetEmail, userId, user.getName(),
                                         item.getRoadmap().getGoal(), DASHBOARD_URL);
                             }
                         });
