@@ -52,7 +52,7 @@ public class User {
 
     @Column(length = 7)
     @Builder.Default
-    private String profileColor = "#3B6B4A";
+    private String profileColor = "#7EB5A6";
 
     // 사용자 연령층
     @Enumerated(EnumType.STRING)
