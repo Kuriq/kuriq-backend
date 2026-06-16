@@ -1,14 +1,18 @@
 package com.example.kuriq.service;
 
 import com.example.kuriq.dto.course.request.CourseSearchRequest;
+import com.example.kuriq.dto.course.response.CourseResponse;
 import com.example.kuriq.dto.course.response.CourseSearchResponse;
 import com.example.kuriq.entity.roadmap.Course;
 import com.example.kuriq.entity.roadmap.Platform;
 import com.example.kuriq.repository.roadmap.CourseRepository;
 import com.example.kuriq.util.CourseCategoryResolver;
 import com.example.kuriq.util.CoursePlatformLabelResolver;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -16,7 +20,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Set;
 
 @Slf4j
@@ -26,9 +33,72 @@ import java.util.Set;
 public class CourseService {
 
     private final CourseRepository courseRepository;
+    private final ObjectMapper objectMapper;
+    private final WebClient aiWebClient;
+
+    @Value("${ai.service.base-url}")
+    private String aiServiceUrl;
+
+    @Value("${internal.api-key}")
+    private String internalApiKey;
 
     public CourseSearchResponse search(CourseSearchRequest request) {
-        return searchFromMysql(request);
+        return searchFromChromaDb(request);
+    }
+
+    private CourseSearchResponse searchFromChromaDb(CourseSearchRequest request) {
+        try {
+            log.info("[CourseService] chromaDB 검색 시작: keyword={}, platform={}, category={}",
+                request.getKeyword(), request.getPlatform(), request.getCategory());
+
+            JsonNode requestBody = objectMapper.createObjectNode()
+                    .put("keyword", request.getKeyword())
+                    .put("platform", request.getPlatform())
+                    .put("category", request.getCategory())
+                    .put("difficulty", request.getDifficulty())
+                    .put("page", request.getPage())
+                    .put("size", request.getSize());
+
+            log.info("[CourseService] AI 서버 요청: {}", aiServiceUrl + "/internal/ai/courses/search");
+
+            JsonNode response = aiWebClient.post()
+                    .uri("/internal/ai/courses/search")
+                    .header("X-Internal-Key", internalApiKey)
+                    .bodyValue(requestBody)
+                    .retrieve()
+                    .bodyToMono(JsonNode.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
+
+            if (response == null) {
+                throw new RuntimeException("AI 서버 응답이 없습니다.");
+            }
+
+            if (response.get("totalElements").asLong() == 0) {
+                throw new RuntimeException("ChromaDB 결과 없음, MySQL fallback");
+            }
+
+            log.info("[CourseService] AI 서버 응답: totalElements={}", response.get("totalElements").asLong());
+
+            List<CourseResponse> content = objectMapper.convertValue(
+                    response.get("content"),
+                    new com.fasterxml.jackson.core.type.TypeReference<List<CourseResponse>>() {}
+            );
+
+            return CourseSearchResponse.builder()
+                    .content(content)
+                    .totalElements(response.get("totalElements").asLong())
+                    .totalPages(response.get("totalPages").asInt())
+                    .currentPage(response.get("currentPage").asInt())
+                    .size(response.get("size").asInt())
+                    .hasNext(response.get("hasNext").asBoolean())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("chromaDB 검색 실패: {}", e.getMessage(), e);
+            log.warn("[CourseService] MySQL 로 fallback 합니다.");
+            return searchFromMysql(request);
+        }
     }
 
     private CourseSearchResponse searchFromMysql(CourseSearchRequest request) {
