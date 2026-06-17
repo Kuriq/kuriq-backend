@@ -155,6 +155,7 @@ public class QuizService {
         }
         // 기존 결과 삭제 후 재채점
         quizResultRepository.findBySessionId(quizSessionId).ifPresent(quizResultRepository::delete);
+        quizResultRepository.flush();
         return gradeAndSave(session, request, userId);
     }
 
