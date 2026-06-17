@@ -349,7 +349,7 @@ public class QuizService {
             String user = answer == null ? null : String.valueOf(answer);
             if (normalize(user).equalsIgnoreCase(normalize(correct))) {
                 isCorrect = true;
-            } else if (matchesKeywords(user, question.getAcceptableKeywords())) {
+            } else if (matchesKeywords(user, question.getAcceptableKeywords(), question.getCorrectAnswer())) {
                 isCorrect = true;
             } else {
                 try {
@@ -430,10 +430,50 @@ public class QuizService {
         return "괜찮아요! 노트를 보충하면 다음에는 더 잘 할 수 있어요 💪";
     }
 
-    private boolean matchesKeywords(String user, List<String> keywords) {
-        if (user == null || keywords == null) return false;
-        String normalizedUser = normalize(user).toLowerCase();
-        return keywords.stream().filter(Objects::nonNull).map(String::trim).map(String::toLowerCase).anyMatch(normalizedUser::equals);
+    private boolean matchesKeywords(String user, List<String> keywords, String correctAnswer) {
+        String normalizedUser = normalizeForKeyword(user);
+        if (normalizedUser.isBlank()) return false;
+
+        List<String> normalizedKeywords = keywords == null ? List.of() : keywords.stream()
+                .filter(Objects::nonNull)
+                .map(this::normalizeForKeyword)
+                .filter(keyword -> !keyword.isBlank())
+                .distinct()
+                .toList();
+
+        if (!normalizedKeywords.isEmpty()) {
+            long matched = normalizedKeywords.stream().filter(normalizedUser::contains).count();
+            int required = normalizedKeywords.size() == 1 ? 1 : (int) Math.ceil(normalizedKeywords.size() * 0.6);
+            if (matched >= required) {
+                return true;
+            }
+        }
+
+        List<String> technicalTerms = extractTechnicalTerms(correctAnswer);
+        return !technicalTerms.isEmpty() && technicalTerms.stream().allMatch(normalizedUser::contains);
+    }
+
+    private String normalizeForKeyword(String value) {
+        if (value == null) return "";
+        return value.trim()
+                .toLowerCase()
+                .replaceAll("[\\p{Punct}\\s]+", "");
+    }
+
+    private List<String> extractTechnicalTerms(String value) {
+        if (value == null || value.isBlank()) return List.of();
+
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("[A-Za-z][A-Za-z0-9_]*")
+                .matcher(value);
+        List<String> terms = new ArrayList<>();
+        while (matcher.find()) {
+            String term = normalizeForKeyword(matcher.group());
+            if (term.length() >= 2 && !terms.contains(term)) {
+                terms.add(term);
+            }
+        }
+        return terms;
     }
 
     private String writeJson(Object value) {
