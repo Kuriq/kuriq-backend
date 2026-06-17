@@ -86,7 +86,7 @@ public final class CoursePlatformLabelResolver {
             case K_MOOC -> "K-MOOC";
             case KOCW -> "KOCW";
             case LLL_PORTAL -> "온국민평생배움터";
-            case EVERLEARNING -> "전국평생학습";
+            case EVERLEARNING -> "서울시평생학습포털";
             case SEOUL_LLL -> "서울시평생학습포털";
             default -> platform.name();
         };

@@ -156,6 +156,7 @@ public class CourseService {
             );
             case SEOUL_LLL -> (root, query, cb) -> cb.or(
                     cb.equal(root.get("platform"), Platform.SEOUL_LLL),
+                    cb.equal(root.get("platform"), Platform.EVERLEARNING),
                     cb.like(root.get("institution"), "서울시평생학습포털%"),
                     cb.like(root.get("institution"), "서울시 평생학습포털%")
             );
